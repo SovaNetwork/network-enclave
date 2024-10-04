@@ -1,0 +1,11 @@
+[package]
+name = "corsa-enclave"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.9.0"
+bitcoin = "0.31.1"
+secp256k1 = "0.29.1"
+hex = "0.4.3"
+serde = { version = "1.0.195", features = ["derive"] }
