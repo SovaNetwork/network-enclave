@@ -57,7 +57,7 @@ curl -X POST http://localhost:5555/sign_transaction \
     ],
     "outputs": [
       [
-        "BCRT1QP5WFCQ48H6D63WYY9QZ0AWTPFQWWV4SM4GC9MC",
+        "bcrt1pclxyszzcwv42fg54s4vk5vnxpmq4vgx65gxnhs5uvhkh5eg8t6qsntwfvu",
         100000000
       ]
     ]
