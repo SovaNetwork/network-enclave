@@ -2,14 +2,33 @@
 
 Corsa enclave is a service that host the network master key and has various methods available for use the master key like deriving child keys and signing transactions.
 
-## Usage
-The repo provides a justfile for command wrapping. After cloning the repository run:
+## Getting Started
+
+To set up and run the Corsa Enclave service, follow these steps:
+
+### Prerequisites
+
+Ensure you have the following installed on your machine:
+
+- [Just](https://just.systems/) - A command runner
+- Rust and Cargo
+
+### Clone the Repository
+
+First, clone the repository to your local machine:
+
+```sh
+git clone https://github.com/OnCorsa/corsa-enclave.git
+cd corsa-enclave
+```
+
+### Build and Run the Service
+Run the following commands to build and start the service:
 ```sh
 just build
 just run
 ```
-
-The service is now running on localhost:5555
+The service will now be running at http://localhost:5555.
 
 ## Show me!
 
@@ -55,3 +74,6 @@ curl -X POST http://localhost:5555/get_public_key \
   }'
 {"public_key":"03dcf2345096bf5d2d81f5810f68e477eb2629df9de98188c61c3e587935387f0c"}
 ```
+
+## Notes:
+Transaction signing is not a finalized design. There are limitations built into the current design.
