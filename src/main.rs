@@ -5,6 +5,9 @@ use actix_web::{web, App, HttpServer, Responder, HttpResponse};
 
 use serde::{Deserialize, Serialize};
 
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+
 use bitcoin::{Address, Network, OutPoint, PublicKey, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness};
 use bitcoin::bip32::{Xpriv, DerivationPath, ChildNumber};
 use bitcoin::sighash::{SighashCache, EcdsaSighashType};
@@ -52,6 +55,8 @@ impl SecureEnclave {
         
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
         let public_key = PublicKey::new(child_key.private_key.public_key(&self.secp));
+        info!("/derive_address -> Bitcoin p2wpkh address: {}", Address::p2wpkh(&public_key, self.network).unwrap());
+
         Address::p2wpkh(&public_key, self.network).map_err(|e| e.into())
     }
 
@@ -109,6 +114,8 @@ impl SecureEnclave {
         let path = Self::ethereum_to_derivation_path(ethereum_address)?;
         
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
+        info!("/get_public_key -> Bitcoin public key: {}", child_key.private_key.public_key(&self.secp));
+
         Ok(PublicKey::new(child_key.private_key.public_key(&self.secp)))
     }
 }
@@ -265,6 +272,15 @@ async fn get_public_key(enclave: web::Data<Arc<SecureEnclave>>, req: web::Json<G
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Initialize the tracing subscriber
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env()
+            .add_directive(tracing::Level::INFO.into()))
+        .init();
+
+    // Log that the application is starting
+    info!("Starting the application");
+
     // TODO (powvt): read seed from cli params for all hardcoded values
     let seed = hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
     let enclave = Arc::new(SecureEnclave::new(&seed).unwrap());

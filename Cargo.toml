@@ -9,3 +9,5 @@ bitcoin = "0.31.1"
 secp256k1 = "0.29.1"
 hex = "0.4.3"
 serde = { version = "1.0.195", features = ["derive"] }
+tracing = "0.1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
