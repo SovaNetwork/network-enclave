@@ -52,14 +52,14 @@ curl -X POST http://localhost:5555/sign_transaction \
       {
         "txid": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
         "vout": 0,
-        "value": 200000000
+        "amount": 200000000
       }
     ],
     "outputs": [
-      [
-        "bcrt1pclxyszzcwv42fg54s4vk5vnxpmq4vgx65gxnhs5uvhkh5eg8t6qsntwfvu",
-        100000000
-      ]
+      {
+        "address": "bcrt1pclxyszzcwv42fg54s4vk5vnxpmq4vgx65gxnhs5uvhkh5eg8t6qsntwfvu",
+        "amount": 100000000
+      }
     ]
   }'
 {"signed_tx":"02000000000101b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a10000000000ffffffff0100e1f505000000001600140d1c9c02a7be9ba8b8842804feb961481ce6561b02473045022100bfc808079442fdb4f95ba0347d0ab1a2001f2426bd506461e323dd195a04bdfc02204cf8b1d3f67ed7d90f78de9c00c62123f641a412698a960e95a074586a54d762210231c69428e898cdce91bd3c82b32d052f842f0db39c08fd13c994f50ad38d4b8f00000000"}
@@ -76,4 +76,4 @@ curl -X POST http://localhost:5555/get_public_key \
 ```
 
 ## Notes:
-Transaction signing is not a finalized design. There are limitations built into the current design.
+Transaction signing does not validate that the signer can actually spend the inputs. It just dumbly signs whatever input is provided. It is up to the calling service to ensure the data provided can be spent.
