@@ -101,7 +101,7 @@ impl SecureEnclave {
         &self,
         ethereum_address: &[u8; 20],
         inputs: Vec<(OutPoint, u64)>,
-        outputs: Vec<(Address, u64)>
+        outputs: Vec<(Address, u64)>,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
         let path = Self::ethereum_to_derivation_path(ethereum_address)?;
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
@@ -180,8 +180,8 @@ pub fn eth_addr_to_bytes_slice(eth_addr: &str) -> Result<[u8; 20], Box<dyn std::
         None => eth_addr,
     };
 
-    let eth_addr_array = <[u8; 20]>::from_hex(eth_addr)
-        .map_err(|e| format!("Invalid Ethereum address: {}", e))?;
+    let eth_addr_array =
+        <[u8; 20]>::from_hex(eth_addr).map_err(|e| format!("Invalid Ethereum address: {}", e))?;
 
     Ok(eth_addr_array)
 }
@@ -240,7 +240,8 @@ async fn derive_address(
     let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
+            return HttpResponse::BadRequest()
+                .body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
 
@@ -259,7 +260,8 @@ async fn sign_transaction(
     let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
+            return HttpResponse::BadRequest()
+                .body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
 
@@ -308,7 +310,8 @@ async fn get_public_key(
     let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
+            return HttpResponse::BadRequest()
+                .body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
 
