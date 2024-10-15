@@ -1,6 +1,8 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
+use hex::FromHex;
+
 use serde::{Deserialize, Serialize};
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
@@ -171,17 +173,17 @@ impl SecureEnclave {
     }
 }
 
-#[derive(Deserialize)]
-struct InputData {
-    txid: String,
-    vout: u32,
-    amount: u64,
-}
+// API Helpers
+pub fn eth_addr_to_bytes_slice(eth_addr: &str) -> Result<[u8; 20], Box<dyn std::error::Error>> {
+    let eth_addr = match eth_addr.strip_prefix("0x") {
+        Some(stripped) => stripped,
+        None => eth_addr,
+    };
 
-#[derive(Deserialize)]
-struct OutputData {
-    address: String,
-    amount: u64,
+    let eth_addr_array = <[u8; 20]>::from_hex(eth_addr)
+        .map_err(|e| format!("Invalid Ethereum address: {}", e))?;
+
+    Ok(eth_addr_array)
 }
 
 // API structs
@@ -193,6 +195,19 @@ struct DeriveAddressRequest {
 #[derive(Serialize)]
 struct DeriveAddressResponse {
     address: String,
+}
+
+#[derive(Deserialize)]
+struct InputData {
+    txid: String,
+    vout: u32,
+    amount: u64,
+}
+
+#[derive(Deserialize)]
+struct OutputData {
+    address: String,
+    amount: u64,
 }
 
 #[derive(Deserialize)]
@@ -222,21 +237,14 @@ async fn derive_address(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<DeriveAddressRequest>,
 ) -> impl Responder {
-    let ethereum_address = match hex::decode(&req.ethereum_address) {
+    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Invalid Ethereum address: {}", e))
+            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
 
-    if ethereum_address.len() != 20 {
-        return HttpResponse::BadRequest().body("Ethereum address must be 20 bytes");
-    }
-
-    let mut eth_addr_array = [0u8; 20];
-    eth_addr_array.copy_from_slice(&ethereum_address);
-
-    match enclave.derive_bitcoin_address(&eth_addr_array) {
+    match enclave.derive_bitcoin_address(&eth_addr_bytes) {
         Ok(address) => HttpResponse::Ok().json(DeriveAddressResponse {
             address: address.to_string(),
         }),
@@ -248,19 +256,12 @@ async fn sign_transaction(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<SignTransactionRequest>,
 ) -> impl Responder {
-    let ethereum_address = match hex::decode(&req.ethereum_address) {
+    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Invalid Ethereum address: {}", e))
+            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
-
-    if ethereum_address.len() != 20 {
-        return HttpResponse::BadRequest().body("Ethereum address must be 20 bytes");
-    }
-
-    let mut eth_addr_array = [0u8; 20];
-    eth_addr_array.copy_from_slice(&ethereum_address);
 
     let inputs: Vec<(OutPoint, u64)> = req
         .inputs
@@ -292,7 +293,7 @@ async fn sign_transaction(
         Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {}", e)),
     };
 
-    match enclave.sign_transaction(&eth_addr_array, inputs, outputs) {
+    match enclave.sign_transaction(&eth_addr_bytes, inputs, outputs) {
         Ok(signed_tx) => HttpResponse::Ok().json(SignTransactionResponse {
             signed_tx: hex::encode(bitcoin::consensus::serialize(&signed_tx)),
         }),
@@ -304,21 +305,14 @@ async fn get_public_key(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<GetPublicKeyRequest>,
 ) -> impl Responder {
-    let ethereum_address = match hex::decode(&req.ethereum_address) {
+    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
         Ok(addr) => addr,
         Err(e) => {
-            return HttpResponse::BadRequest().body(format!("Invalid Ethereum address: {}", e))
+            return HttpResponse::BadRequest().body(format!("Cannot convert Ethereum address to bytes: {}", e))
         }
     };
 
-    if ethereum_address.len() != 20 {
-        return HttpResponse::BadRequest().body("Ethereum address must be 20 bytes");
-    }
-
-    let mut eth_addr_array = [0u8; 20];
-    eth_addr_array.copy_from_slice(&ethereum_address);
-
-    match enclave.get_public_key(&eth_addr_array) {
+    match enclave.get_public_key(&eth_addr_bytes) {
         Ok(public_key) => HttpResponse::Ok().json(GetPublicKeyResponse {
             public_key: public_key.to_string(),
         }),

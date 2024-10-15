@@ -1,6 +1,6 @@
 # Corsa Enclave
 
-Corsa enclave is a service that host the network master key and has various methods available for use the master key like deriving child keys and signing transactions.
+Corsa enclave is a service that hosts the network master key and has various methods available for use, like deriving child keys and signing transactions.
 
 ## Getting Started
 
@@ -23,9 +23,8 @@ cd corsa-enclave
 ```
 
 ### Build and Run the Service
-Run the following commands to build and start the service:
+Run the following command to build and start the service:
 ```sh
-just build
 just run
 ```
 The service will now be running at http://localhost:5555.
@@ -36,10 +35,7 @@ The service will now be running at http://localhost:5555.
 ```sh
 curl -X POST http://localhost:5555/derive_address \
   -H "Content-Type: application/json" \
-  -d '{
-    "ethereum_address": "F9F6608792F3efC3930D4083F52CEd39EB2F20D8" 
-  }'
-{"address":"bcrt1qdqvts4mprnngm0jcn5r6q0arelty7kpdt3uvk6"}
+  -d '{"ethereum_address": "0xF9F6608792F3efC3930D4083F52CEd39EB2F20D8"}'
 ```
 
 ### Sign a transaction with a given ethereum address
@@ -62,17 +58,13 @@ curl -X POST http://localhost:5555/sign_transaction \
       }
     ]
   }'
-{"signed_tx":"02000000000101b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a10000000000ffffffff0100e1f505000000001600140d1c9c02a7be9ba8b8842804feb961481ce6561b02473045022100bfc808079442fdb4f95ba0347d0ab1a2001f2426bd506461e323dd195a04bdfc02204cf8b1d3f67ed7d90f78de9c00c62123f641a412698a960e95a074586a54d762210231c69428e898cdce91bd3c82b32d052f842f0db39c08fd13c994f50ad38d4b8f00000000"}
 ```
 
 ### Get Bitcoin public key for Ethereum address
 ```sh
 curl -X POST http://localhost:5555/get_public_key \
   -H "Content-Type: application/json" \
-  -d '{
-    "ethereum_address": "F9F6608792F3efC3930D4083F52CEd39EB2F20D8"
-  }'
-{"public_key":"03dcf2345096bf5d2d81f5810f68e477eb2629df9de98188c61c3e587935387f0c"}
+  -d '{"ethereum_address": "0xF9F6608792F3efC3930D4083F52CEd39EB2F20D8"}'
 ```
 
 ## Notes:
