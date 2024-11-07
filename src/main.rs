@@ -5,6 +5,8 @@ use hex::FromHex;
 
 use serde::{Deserialize, Serialize};
 
+use clap::Parser;
+
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
 use bitcoin::hashes::{hash160, Hash};
@@ -19,6 +21,22 @@ use bitcoin::{
     Address, Amount, Network, OutPoint, PublicKey, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
     Txid, Witness,
 };
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Host address to bind to
+    #[arg(long, default_value = "127.0.0.1")]
+    host: String,
+
+    /// Port to listen on
+    #[arg(long, default_value = "5555")]
+    port: u16,
+
+    /// Hex-encoded seed for key generation
+    #[arg(long, default_value = "000102030405060708090a0b0c0d0e0f")]
+    seed: String,
+}
 
 struct SecureEnclave {
     network: Network,
@@ -325,6 +343,9 @@ async fn get_public_key(
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Parse command line arguments
+    let args = Args::parse();
+
     // Initialize the tracing subscriber
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
@@ -332,10 +353,13 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting Corsa Enclave service...");
 
-    // TODO (powvt): read seed from cli params for all hardcoded values
-    let seed = hex::decode("000102030405060708090a0b0c0d0e0f").unwrap();
+    // Use seed from CLI args
+    let seed = hex::decode(&args.seed).expect("Invalid hex-encoded seed");
     let enclave = Arc::new(SecureEnclave::new(&seed).unwrap());
     let enclave_data = web::Data::new(enclave);
+
+    let bind_addr = format!("{}:{}", args.host, args.port);
+    info!("Binding to {}", bind_addr);
 
     HttpServer::new(move || {
         App::new()
@@ -344,7 +368,7 @@ async fn main() -> std::io::Result<()> {
             .route("/sign_transaction", web::post().to(sign_transaction))
             .route("/get_public_key", web::post().to(get_public_key))
     })
-    .bind("127.0.0.1:5555")?
+    .bind(&bind_addr)?
     .run()
     .await
 }
