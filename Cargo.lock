@@ -487,20 +487,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "corsa-enclave"
-version = "0.0.1"
-dependencies = [
- "actix-web",
- "bitcoin",
- "clap",
- "hex",
- "secp256k1 0.29.1",
- "serde",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -734,6 +720,20 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "hyperstate-enclave"
+version = "0.0.1"
+dependencies = [
+ "actix-web",
+ "bitcoin",
+ "clap",
+ "hex",
+ "secp256k1 0.29.1",
+ "serde",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "idna"

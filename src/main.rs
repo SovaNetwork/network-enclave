@@ -351,7 +351,7 @@ async fn main() -> std::io::Result<()> {
         .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
         .init();
 
-    info!("Starting Corsa Enclave service...");
+    info!("Starting Hyperstate Enclave service...");
 
     // Use seed from CLI args
     let seed = hex::decode(&args.seed).expect("Invalid hex-encoded seed");
