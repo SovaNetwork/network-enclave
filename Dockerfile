@@ -28,7 +28,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from builder
-COPY --from=builder /usr/src/app/target/release/hyperstate-enclave /usr/local/bin/
+COPY --from=builder /usr/src/app/target/release/network-enclave /usr/local/bin/
 
 # Create a non-root user with specific UID
 RUN useradd -m -u 1001 enclave
@@ -41,4 +41,4 @@ ENV RUST_LOG=info
 EXPOSE 5555
 
 # Run the binary
-CMD ["hyperstate-enclave"]
+CMD ["network-enclave"]

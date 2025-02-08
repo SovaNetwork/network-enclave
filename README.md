@@ -1,6 +1,6 @@
-# Hyperstate Enclave
+# Network Enclave
 
-Hyperstate Enclave is a service that hosts the network master key and provides various methods for use, such as deriving child keys and signing transactions. It uses Bitcoin's BIP32 hierarchical deterministic wallets to derive Bitcoin addresses and keys from Ethereum addresses.
+Network Enclave is a bitcoin signing service that hosts the network master key and provides various methods for use, such as deriving child keys and signing transactions. This service uses Bitcoin's BIP32 hierarchical deterministic wallets to derive Bitcoin addresses and keys from Ethereum addresses.
 
 ## Features
 
@@ -10,7 +10,7 @@ Hyperstate Enclave is a service that hosts the network master key and provides v
 
 ## Getting Started
 
-To set up and run the Hyperstate Enclave service, follow these steps:
+To set up and run the enclave service, follow these steps:
 
 ### Prerequisites
 
@@ -24,8 +24,8 @@ Ensure you have the following installed on your machine:
 First, clone the repository to your local machine:
 
 ```sh
-git clone https://github.com/OnCorsa/hyperstate-enclave.git
-cd hyperstate-enclave
+git clone https://github.com/OnCorsa/network-enclave.git
+cd network-enclave
 ```
 
 ### Build and Run the Service
