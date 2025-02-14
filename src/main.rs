@@ -11,7 +11,7 @@ use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
 use bitcoin::hashes::{hash160, Hash};
 
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
@@ -264,10 +264,16 @@ async fn derive_address(
     };
 
     match enclave.derive_bitcoin_address(&eth_addr_bytes) {
-        Ok(address) => HttpResponse::Ok().json(DeriveAddressResponse {
-            address: address.to_string(),
-        }),
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+        Ok(address) => {
+            debug!("Derived Bitcoin address: {:?}", address);
+            HttpResponse::Ok().json(DeriveAddressResponse {
+                address: address.to_string(),
+            })
+        }
+        Err(e) => {
+            debug!("Error deriving Bitcoin address: {:?}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
     }
 }
 
@@ -314,10 +320,16 @@ async fn sign_transaction(
     };
 
     match enclave.sign_transaction(&eth_addr_bytes, inputs, outputs) {
-        Ok(signed_tx) => HttpResponse::Ok().json(SignTransactionResponse {
-            signed_tx: hex::encode(bitcoin::consensus::serialize(&signed_tx)),
-        }),
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+        Ok(signed_tx) => {
+            debug!("Signed transaction: {:?}", signed_tx);
+            HttpResponse::Ok().json(SignTransactionResponse {
+                signed_tx: hex::encode(bitcoin::consensus::serialize(&signed_tx)),
+            })
+        }
+        Err(e) => {
+            debug!("Error signing transaction: {:?}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
     }
 }
 
@@ -334,10 +346,16 @@ async fn get_public_key(
     };
 
     match enclave.get_public_key(&eth_addr_bytes) {
-        Ok(public_key) => HttpResponse::Ok().json(GetPublicKeyResponse {
-            public_key: public_key.to_string(),
-        }),
-        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+        Ok(public_key) => {
+            debug!("Derived public key: {:?}", public_key);
+            HttpResponse::Ok().json(GetPublicKeyResponse {
+                public_key: public_key.to_string(),
+            })
+        }
+        Err(e) => {
+            debug!("Error deriving public key: {:?}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
     }
 }
 
