@@ -35,7 +35,7 @@ RUN useradd -m -u 1001 enclave
 USER enclave
 
 # Set environment variables
-ENV RUST_LOG=info
+ENV RUST_LOG=debug
 
 # Expose the service port
 EXPOSE 5555
