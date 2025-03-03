@@ -5,9 +5,8 @@ Network signing enables validators on the Sova Network to control Bitcoin assets
 ### Technical Requirements
 
 1. Securely manage a root extended master private key
-2. Generate deterministic keys for smart contracts
-3. Sign Bitcoin transaction inputs
-4. Provide high availability and resilience
+2. Generate key shards to be used by validators in signing.
+3. Provide high availability and resilience
 
 ### Core Components
 
