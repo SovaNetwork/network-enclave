@@ -4,9 +4,9 @@ Network signing enables validators on the Sova Network to control Bitcoin assets
 
 ### Technical Requirements
 
-1. Securely manage a root extended master private key
+1. Securely manage a root extended master private key.
 2. Generate key shards to be used by validators in signing.
-3. Provide high availability and resilience
+3. Provide high availability and resilience.
 
 ### Core Components
 
@@ -16,8 +16,9 @@ Network signing enables validators on the Sova Network to control Bitcoin assets
 2. **Security Features**:
    - Protection against key theft through sharding and TEEs (Trusted Execution Environments).
    - Completely sealed execution environment which handles pk shard requests.
-   - Multisignature schemes to ensure resilience against network failures
-   - Economic security through validator slashing conditions
+   - Multisignature schemes to ensure resilience against network failures.
+   - Economic security through validator slashing conditions.
+   - Defense in depth.
 
 3. **Transaction Flow**:
    - Validators process Sova EVM transactions that interact with Bitcoin.
@@ -42,12 +43,10 @@ Network signing enables validators on the Sova Network to control Bitcoin assets
 * How does the network handle version upgrades of the signing service?
 
 ### Implementation
-* What specific TEE frameworks are most appropriate for this application?
-* What programming language and frameworks are used?
+* What specific TEE frameworks are most appropriate for this application? Language?
 * What existing multi-party computation or threshold signature libraries are used?
-* What's our approach to auditing and verification?
-* What protection mechanisms can we implement to protect us against side-channel attacks?
-* How can we test the security of the implementation?
+* What's our approach to auditing and verification? "Sting framework" for proving a subversion service. Side-channel attacks?
+* How can we proactively test the security of the implementation?
 
 ### General
 * What is the timeline for implementation and deployment?
