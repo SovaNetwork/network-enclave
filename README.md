@@ -2,6 +2,8 @@
 
 Network Enclave is a bitcoin signing service that hosts the network master key and provides various methods for use, such as deriving child keys and signing transactions. This service uses Bitcoin's BIP32 hierarchical deterministic wallets to derive Bitcoin addresses and keys from Ethereum addresses.
 
+> **IMPORTANT:** The current implementation is for testing and development purposes only. It is not intended for production use and lacks the security features required for a production environment. See [./docs/scope_and_design.md](./docs/scope_and_design.md) for information about the production implementation plan.
+
 ## Features
 
 - Derive Bitcoin addresses from Ethereum addresses
@@ -10,7 +12,7 @@ Network Enclave is a bitcoin signing service that hosts the network master key a
 
 ## Getting Started
 
-To set up and run the enclave service, follow these steps:
+To set up and run the testing enclave service, follow these steps:
 
 ### Prerequisites
 

@@ -57,43 +57,43 @@ impl SecureEnclave {
         })
     }
 
-    /// Derive the corresponding bip32 derivation path from the ethereum address
-    fn ethereum_to_derivation_path(
-        ethereum_address: &[u8; 20],
+    /// Derive the corresponding bip32 derivation path from the evm address
+    fn evm_address_to_btc_derivation_path(
+        evm_address: &[u8; 20],
     ) -> Result<DerivationPath, Box<dyn std::error::Error>> {
         let path = DerivationPath::from(vec![
             ChildNumber::from_hardened_idx(44)?, // Purpose: BIP44
             ChildNumber::from_hardened_idx(0)?,  // Coin type: Bitcoin
             // split into 4 byte chunks to fit the entire eth address
             ChildNumber::from(
-                (ethereum_address[0] as u32) << 24
-                    | (ethereum_address[1] as u32) << 16
-                    | (ethereum_address[2] as u32) << 8
-                    | ethereum_address[3] as u32,
+                (evm_address[0] as u32) << 24
+                    | (evm_address[1] as u32) << 16
+                    | (evm_address[2] as u32) << 8
+                    | evm_address[3] as u32,
             ), // uint32, 4 bytes
             ChildNumber::from(
-                (ethereum_address[4] as u32) << 24
-                    | (ethereum_address[5] as u32) << 16
-                    | (ethereum_address[6] as u32) << 8
-                    | ethereum_address[7] as u32,
+                (evm_address[4] as u32) << 24
+                    | (evm_address[5] as u32) << 16
+                    | (evm_address[6] as u32) << 8
+                    | evm_address[7] as u32,
             ), // uint32, 4 bytes
             ChildNumber::from(
-                (ethereum_address[8] as u32) << 24
-                    | (ethereum_address[9] as u32) << 16
-                    | (ethereum_address[10] as u32) << 8
-                    | ethereum_address[11] as u32,
+                (evm_address[8] as u32) << 24
+                    | (evm_address[9] as u32) << 16
+                    | (evm_address[10] as u32) << 8
+                    | evm_address[11] as u32,
             ), // uint32, 4 bytes
             ChildNumber::from(
-                (ethereum_address[12] as u32) << 24
-                    | (ethereum_address[13] as u32) << 16
-                    | (ethereum_address[14] as u32) << 8
-                    | ethereum_address[15] as u32,
+                (evm_address[12] as u32) << 24
+                    | (evm_address[13] as u32) << 16
+                    | (evm_address[14] as u32) << 8
+                    | evm_address[15] as u32,
             ), // uint32, 4 bytes
             ChildNumber::from(
-                (ethereum_address[16] as u32) << 24
-                    | (ethereum_address[17] as u32) << 16
-                    | (ethereum_address[18] as u32) << 8
-                    | ethereum_address[19] as u32,
+                (evm_address[16] as u32) << 24
+                    | (evm_address[17] as u32) << 16
+                    | (evm_address[18] as u32) << 8
+                    | evm_address[19] as u32,
             ), // uint32, 4 bytes
         ]); // uint160 (20 bytes) = ethereum address
         Ok(path)
@@ -102,9 +102,9 @@ impl SecureEnclave {
     /// Given an Ethereum address (20-byte array), derive the corresponding Bitcoin address
     pub fn derive_bitcoin_address(
         &self,
-        ethereum_address: &[u8; 20],
+        evm_address: &[u8; 20],
     ) -> Result<Address, Box<dyn std::error::Error>> {
-        let path = Self::ethereum_to_derivation_path(ethereum_address)?;
+        let path = Self::evm_address_to_btc_derivation_path(evm_address)?;
 
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
         let public_key = PublicKey::new(child_key.private_key.public_key(&self.secp));
@@ -117,11 +117,11 @@ impl SecureEnclave {
     /// This function assumes that the signer can spend all of the transaction inputs.
     pub fn sign_transaction(
         &self,
-        ethereum_address: &[u8; 20],
+        evm_address: &[u8; 20],
         inputs: Vec<(OutPoint, u64)>,
         outputs: Vec<(Address, u64)>,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
-        let path = Self::ethereum_to_derivation_path(ethereum_address)?;
+        let path = Self::evm_address_to_btc_derivation_path(evm_address)?;
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
         let public_key = child_key.private_key.public_key(&self.secp);
 
@@ -179,12 +179,12 @@ impl SecureEnclave {
         Ok(tx)
     }
 
-    // Given an Ethereum address (20-byte array), derive the corresponding Bitcoin public key
-    pub fn get_public_key(
+    // Given an EVM address, derive the corresponding Bitcoin public key
+    pub fn get_btc_public_key(
         &self,
-        ethereum_address: &[u8; 20],
+        evm_address: &[u8; 20],
     ) -> Result<PublicKey, Box<dyn std::error::Error>> {
-        let path = Self::ethereum_to_derivation_path(ethereum_address)?;
+        let path = Self::evm_address_to_btc_derivation_path(evm_address)?;
         let child_key = self.master_key.derive_priv(&self.secp, &path)?;
 
         Ok(PublicKey::new(child_key.private_key.public_key(&self.secp)))
@@ -207,7 +207,7 @@ pub fn eth_addr_to_bytes_slice(eth_addr: &str) -> Result<[u8; 20], Box<dyn std::
 // API structs
 #[derive(Deserialize)]
 struct DeriveAddressRequest {
-    ethereum_address: String,
+    evm_address: String,
 }
 
 #[derive(Serialize)]
@@ -230,7 +230,7 @@ struct OutputData {
 
 #[derive(Deserialize)]
 struct SignTransactionRequest {
-    ethereum_address: String,
+    evm_address: String,
     inputs: Vec<InputData>,
     outputs: Vec<OutputData>,
 }
@@ -242,7 +242,7 @@ struct SignTransactionResponse {
 
 #[derive(Deserialize)]
 struct GetPublicKeyRequest {
-    ethereum_address: String,
+    evm_address: String,
 }
 
 #[derive(Serialize)]
@@ -255,15 +255,15 @@ async fn derive_address(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<DeriveAddressRequest>,
 ) -> impl Responder {
-    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
+    let evm_addr_bytes = match eth_addr_to_bytes_slice(&req.evm_address) {
         Ok(addr) => addr,
         Err(e) => {
             return HttpResponse::BadRequest()
-                .body(format!("Cannot convert Ethereum address to bytes: {}", e))
+                .body(format!("Cannot convert EVM address to bytes: {}", e))
         }
     };
 
-    match enclave.derive_bitcoin_address(&eth_addr_bytes) {
+    match enclave.derive_bitcoin_address(&evm_addr_bytes) {
         Ok(address) => {
             debug!("Derived Bitcoin address: {:?}", address);
             HttpResponse::Ok().json(DeriveAddressResponse {
@@ -281,7 +281,7 @@ async fn sign_transaction(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<SignTransactionRequest>,
 ) -> impl Responder {
-    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
+    let evm_addr_bytes = match eth_addr_to_bytes_slice(&req.evm_address) {
         Ok(addr) => addr,
         Err(e) => {
             return HttpResponse::BadRequest()
@@ -319,7 +319,7 @@ async fn sign_transaction(
         Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {}", e)),
     };
 
-    match enclave.sign_transaction(&eth_addr_bytes, inputs, outputs) {
+    match enclave.sign_transaction(&evm_addr_bytes, inputs, outputs) {
         Ok(signed_tx) => {
             debug!("Signed transaction: {:?}", signed_tx);
             HttpResponse::Ok().json(SignTransactionResponse {
@@ -333,11 +333,11 @@ async fn sign_transaction(
     }
 }
 
-async fn get_public_key(
+async fn get_btc_public_key(
     enclave: web::Data<Arc<SecureEnclave>>,
     req: web::Json<GetPublicKeyRequest>,
 ) -> impl Responder {
-    let eth_addr_bytes = match eth_addr_to_bytes_slice(&req.ethereum_address) {
+    let evm_addr_bytes = match eth_addr_to_bytes_slice(&req.evm_address) {
         Ok(addr) => addr,
         Err(e) => {
             return HttpResponse::BadRequest()
@@ -345,7 +345,7 @@ async fn get_public_key(
         }
     };
 
-    match enclave.get_public_key(&eth_addr_bytes) {
+    match enclave.get_btc_public_key(&evm_addr_bytes) {
         Ok(public_key) => {
             debug!("Derived public key: {:?}", public_key);
             HttpResponse::Ok().json(GetPublicKeyResponse {
@@ -384,7 +384,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(enclave_data.clone())
             .route("/derive_address", web::post().to(derive_address))
             .route("/sign_transaction", web::post().to(sign_transaction))
-            .route("/get_public_key", web::post().to(get_public_key))
+            .route("/get_public_key", web::post().to(get_btc_public_key))
     })
     .bind(&bind_addr)?
     .run()
