@@ -77,7 +77,7 @@ In order to know what UTXOs a EVM address can spend, the validators must all run
 
 When a protocol wants to pull native Bitcoin funds from a user, the user signs a transaction saying the recipient of the tx is the corresponding Sova smart contract public Bitcoin address. Then, when the smart contract is processing and pulling the funds from the user, they check they are the recipient and then broadcast the signed payload. Once the broadcast transaction confirms on Bitcoin, the smart contract (Sova Network) now owns that Bitcoin and has the ability to spend it via the network signing service. 
 
-### Decentralized Network Signer (Phase X)
+### Decentralized Network, Multiple Signers (Phase X)
 
 In a more mature version of the network, we cannot place this much trust and responsibility on a single service. For many reasons, the signing service must be decentralized and not be a single point of failure for the network.
 
