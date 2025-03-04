@@ -3,62 +3,51 @@
 Overview: Network signing enables validators on the Sova Network to control Bitcoin assets through a secure, deterministic key derivation system. This infrastructure acts as a conduit for allowing smart contracts on the network to broadcast Bitcoin transactions.
 
 *What is the Network Signing service?*
-The network signing service (nicknamed: 'enclave') is a service which enables validators to send BTC assets controlled by the network to wallets outside the network. 
+The network signing service (nicknamed: 'enclave') is a service which enables validators to send BTC assets controlled by the Sova Network to Bitcoin wallets outside the network. 
 
 *Why is this needed?*
-The Sova Networks needs a way to send UTXOs that are owned by smart contracts. Many smart contract protocols will utilize this network feature when a user wants to settle their tokens on Sova back into native BTC. An example of this is a DEX where a user swaps "Sova Dog Token" for BTC.
+The Sova Networks needs a way to send UTXOs that are owned by smart contracts. Many smart contract protocols will utilize the signing service when a user wants to convert their tokens on Sova back into native BTC. An example of this is a DEX where a user swaps "Sova Dog Token" for BTC. In the DEX example, the protocol will request X amount of BTC to be sent to a Bitcoin wallet address specified by the user.
 
-#### Technical Requirements
+#### Functional Requirements
 
 1. Securely manage a root extended master private key.
-2. Generate key shards to be used by validators in signing.
-3. Provide high availability and resilience.
+2. Key shard generation and management.
+3. Validators can get a key shard to be used in signing.
+4. Provide high availability and resilience.
 
-#### Core Components
+#### Non-Functional Requirements
 
-1. **Network Key Management**: 
-   - Signing service holds a shared root network key that allows validators to interact with Bitcoin.
-
-2. **Security Features**:
-   - Protection against key theft through sharding and TEEs (Trusted Execution Environments).
-   - Completely sealed execution environment which handles pk shard requests.
-   - Multisignature schemes to ensure resilience against network failures.
-   - Economic security through validator slashing conditions.
-   - Defense in depth.
-
-3. **Transaction Flow**:
-   - Validators process Sova EVM transactions that interact with Bitcoin.
-   - When network signing Bitcoin precompile is called, validators prepare a UTXO payload.
-   - Validator requests a key shard to be used in signing the payload.
-   - Validator signs the payload.
-   - Signed transaction is broadcast to Bitcoin.
+1. Protection against key theft through sharding and TEEs (Trusted Execution Environments).
+2. Completely sealed execution environment which handles pk shard requests.
+3. Multi-signature schemes to ensure resilience against signer network failures.
 
 #### Important Design Questions to Answer
 
 1. **Decentralization**
-* What threshold signature scheme should we implement for the sharded key?
-* What properties of this design enable decentralization at scale? Do parts of this design need to be decentralized progressively?
-* What's the minimum viable decentralization for launch?
-* What does operator onboarding look like?
-* How does the network handle key rotation or recovery in a decentralized setting?
+   * What threshold signature scheme should we implement for the sharded key?
+   * What properties of this design enable decentralization at scale? Do parts of this design need to be decentralized progressively?
+   * What's the minimum viable decentralization for launch?
+   * What does operator onboarding look like?
+   * How does the network handle key rotation or recovery in a decentralized setting?
 
 2. **Operational**
-* How can we ensure the integrity of the key shards during distribution?
-* What monitoring systems should be put in place and what are they tuned to detect?
-* What's the approach to disaster recovery?
-* How does the network handle version upgrades of the signing service?
+   * How can we ensure the integrity of the key shards during distribution?
+   * What monitoring systems should be put in place and what are they tuned to detect?
+   * What's the approach to disaster recovery?
+   * How does the network handle upgrades of the signing service?
 
 3. **Implementation**
-* What specific TEE frameworks are most appropriate for this application? Language?
-* What existing multi-party computation or threshold signature libraries are used?
-* What's our approach to auditing and verification? "Sting framework" for proving a subversion service. Side-channel attacks?
-* How can we proactively test the security of the implementation?
+   * What specific TEE frameworks are most appropriate for this application? Language?
+   * What existing multi-party computation or threshold signature libraries are used?
+   * What's our approach to auditing and verification? "Sting framework" for proving a subversion servic? Side-channel attacks?
+   * How can we proactively test the security of the implementation?
 
 4. **General**
-* What is the timeline for implementation and deployment?
-* What are some alternative designs? Why are they inferior or not considered for this project?
-* How can we demonstrate to investors and users this design can be trusted?
-* What is the estimated cost for running the signing service? Can this cost be offloaded to the network somehow?
+   * What are the important milestones for implementation and deployment?
+   * What are some alternative designs? Why are they inferior or not considered for this project?
+   * How can we demonstrate to investors and users this design can be trusted?
+   * How can we incentivize third parties to run this service?
+   * What is the estimated cost for running this signing service? Can this cost be offloaded to the network somehow?
 
 
 ## Designing for an Evolving Network
