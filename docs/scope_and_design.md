@@ -8,13 +8,13 @@ The network signing service (nicknamed: 'enclave') is a service which enables va
 *Why is this needed?*
 The Sova Networks needs a way to send UTXOs that are owned by smart contracts. Many smart contract protocols will utilize this network feature when a user wants to settle their tokens on Sova back into native BTC. An example of this is a DEX where a user swaps "Sova Dog Token" for BTC.
 
-### Technical Requirements
+#### Technical Requirements
 
 1. Securely manage a root extended master private key.
 2. Generate key shards to be used by validators in signing.
 3. Provide high availability and resilience.
 
-### Core Components
+#### Core Components
 
 1. **Network Key Management**: 
    - Signing service holds a shared root network key that allows validators to interact with Bitcoin.
@@ -33,28 +33,28 @@ The Sova Networks needs a way to send UTXOs that are owned by smart contracts. M
    - Validator signs the payload.
    - Signed transaction is broadcast to Bitcoin.
 
-## Design Questions
+#### Important Design Questions to Answer
 
-### Decentralization
+1. **Decentralization**
 * What threshold signature scheme should we implement for the sharded key?
 * What properties of this design enable decentralization at scale? Do parts of this design need to be decentralized progressively?
 * What's the minimum viable decentralization for launch?
 * What does operator onboarding look like?
 * How does the network handle key rotation or recovery in a decentralized setting?
 
-### Operational
+2. **Operational**
 * How can we ensure the integrity of the key shards during distribution?
 * What monitoring systems should be put in place and what are they tuned to detect?
 * What's the approach to disaster recovery?
 * How does the network handle version upgrades of the signing service?
 
-### Implementation
+3. **Implementation**
 * What specific TEE frameworks are most appropriate for this application? Language?
 * What existing multi-party computation or threshold signature libraries are used?
 * What's our approach to auditing and verification? "Sting framework" for proving a subversion service. Side-channel attacks?
 * How can we proactively test the security of the implementation?
 
-### General
+4. **General**
 * What is the timeline for implementation and deployment?
 * What are some alternative designs? Why are they inferior or not considered for this project?
 * How can we demonstrate to investors and users this design can be trusted?
@@ -88,7 +88,7 @@ In order to know what UTXOs a EVM address can spend, the validators must all run
 
 When a protocol wants to pull native Bitcoin funds from a user, the user signs a transaction saying the recipient of the tx is the corresponding Sova smart contract public Bitcoin address. Then, when the smart contract is processing and pulling the funds from the user, they check they are the recipient and then broadcast the signed payload. Once the broadcast transaction confirms on Bitcoin, the smart contract (Sova Network) now owns that Bitcoin and has the ability to spend it via the network signing service. 
 
-## Decentralized Network Signer (Phase X)
+### Decentralized Network Signer (Phase X)
 
 In a more mature version of the network, we cannot place this much trust and responsibility on a single service. For many reasons, the signing service must be decentralized and not be a single point of failure for the network.
 
@@ -96,7 +96,7 @@ The initial point of decentralizing this service will be to modify the signing s
 
 In a network of signers, there is a fundamental change to a primary characteristic of the signing protocol. No single service can control the network private key; it must be 'shared' amongst the network of signers such that no signer knows the entire private key. Each signer may only know a shard of the private key, but signers can combine their shards to produce fully signed payloads for the network.
 
-### Implementing Threshold Signatures
+#### Implementing Threshold Signatures
 
 The plan is to implement a threshold signature scheme where m-of-n signers must participate to create a valid signature. This provides both security and availability:
 
@@ -112,7 +112,7 @@ For the signature scheme we will use ECDSA since it's directly compatible with B
    - A threshold of partial signatures are combined to form a complete signature
    - The complete signature is broadcast with the transaction
 
-### Key Generation and Distribution
+#### Key Generation and Distribution
 
 The initial key generation will be conducted through a secure ceremony:
 
@@ -123,7 +123,7 @@ The initial key generation will be conducted through a secure ceremony:
 
 As the network matures, we'll implement distributed key generation (DKG) protocols so that the master key never exists in complete form, even during the setup phase.
 
-### Signer Selection and Rotation
+#### Signer Selection and Rotation
 
 To mitigate centralization risks:
 
@@ -142,7 +142,7 @@ To mitigate centralization risks:
    - Responding quickly to signing requests
    - Properly following the security protocol
 
-### Governance and Security Upgrades
+#### Governance and Security Upgrades
 
 The signer network will need governance mechanisms for:
 
