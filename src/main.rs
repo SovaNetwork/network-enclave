@@ -11,7 +11,7 @@ use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
 use bitcoin::hashes::{hash160, Hash};
 
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
@@ -33,9 +33,19 @@ struct Args {
     #[arg(long, default_value = "5555")]
     port: u16,
 
-    /// Hex-encoded seed for key generation
-    #[arg(long, default_value = "000102030405060708090a0b0c0d0e0f")]
-    seed: String,
+    /// Bitcoin network to use (regtest, testnet, mainnet)
+    #[arg(long, value_parser = parse_network, default_value = "regtest")]
+    network: Network,
+}
+
+fn parse_network(s: &str) -> Result<Network, &'static str> {
+    match s.to_lowercase().as_str() {
+        "regtest" => Ok(Network::Regtest),
+        "testnet" => Ok(Network::Testnet),
+        "signet" => Ok(Network::Signet),
+        "mainnet" => Ok(Network::Bitcoin),
+        _ => Err("Invalid network. Use 'regtest', 'testnet', 'signet' or 'mainnet'"),
+    }
 }
 
 struct SecureEnclave {
@@ -46,8 +56,7 @@ struct SecureEnclave {
 
 impl SecureEnclave {
     /// Generate new SecureEnclave master key
-    pub fn new(seed: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-        let network = Network::Regtest; // update for testnet or mainnet
+    pub fn new(seed: &[u8], network: Network) -> Result<Self, Box<dyn std::error::Error>> {
         let master_key = Xpriv::new_master(network, seed)?;
 
         Ok(SecureEnclave {
@@ -357,9 +366,38 @@ async fn main() -> std::io::Result<()> {
         warn!("WARNING: API_KEY environment variable is not set. Protected endpoints will be inaccessible.");
     }
 
-    // Use seed from CLI args
-    let seed = hex::decode(&args.seed).expect("Invalid hex-encoded seed");
-    let enclave = Arc::new(SecureEnclave::new(&seed).unwrap());
+    // Get seed from environment variable
+    let seed = match std::env::var("BIP32_SEED") {
+        Ok(seed_hex) => match hex::decode(&seed_hex) {
+            Ok(seed) => seed,
+            Err(e) => {
+                error!("ERROR: Invalid hex-encoded seed in BIP32_SEED: {}", e);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Invalid hex-encoded seed",
+                ));
+            }
+        },
+        Err(_) => {
+            error!("ERROR: BIP32_SEED environment variable must be set");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "BIP32_SEED environment variable not set",
+            ));
+        }
+    };
+
+    let enclave = match SecureEnclave::new(&seed, args.network) {
+        Ok(e) => Arc::new(e),
+        Err(e) => {
+            error!("ERROR: Failed to create secure enclave: {}", e);
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ));
+        }
+    };
+
     let enclave_data = web::Data::new(enclave);
 
     let bind_addr = format!("{}:{}", args.host, args.port);
