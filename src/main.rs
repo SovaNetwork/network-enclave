@@ -391,8 +391,7 @@ async fn main() -> std::io::Result<()> {
         Ok(e) => Arc::new(e),
         Err(e) => {
             error!("ERROR: Failed to create secure enclave: {}", e);
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            return Err(std::io::Error::other(
                 e.to_string(),
             ));
         }
