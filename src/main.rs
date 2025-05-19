@@ -349,6 +349,13 @@ async fn sign_transaction(
     }
 }
 
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "healthy",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Parse command line arguments
@@ -405,6 +412,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(enclave_data.clone())
             // Public routes
             .route("/derive_address", web::post().to(derive_address))
+            .route("/health", web::get().to(health_check))
             // Protected routes
             .route("/sign_transaction", web::post().to(sign_transaction))
     })
