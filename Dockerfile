@@ -1,44 +1,34 @@
-# Build stage
-FROM rust:1.81-slim-bookworm as builder
+# Use cargo-chef to plan the build
+FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+WORKDIR /app
 
-# Create a new empty shell project
-WORKDIR /usr/src/app
+# Create a recipe for caching dependencies
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Install system dependencies
+# Build dependencies - this is the caching layer!
+FROM chef AS builder
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is cached unless Cargo.lock changes
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Build application
+COPY . .
 RUN apt-get update && \
     apt-get install -y pkg-config libssl-dev && \
     rm -rf /var/lib/apt/lists/*
-
-# Copy manifests
-COPY Cargo.toml Cargo.lock ./
-
-# Copy source code
-COPY src ./src
-COPY justfile ./
-
-# Build the application
 RUN cargo build --release
 
-# Final stage
-FROM debian:bookworm-slim
-
-# Install runtime dependencies
-RUN apt-get update && \
-    apt-get install -y ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Create the runtime image using Distroless (very minimal, more secure)
+FROM gcr.io/distroless/cc-debian12
 
 # Copy the binary from builder
-COPY --from=builder /usr/src/app/target/release/network-enclave /usr/local/bin/
-
-# Create a non-root user with specific UID
-RUN useradd -m -u 1001 enclave
-USER enclave
-
-# Set environment variables
-ENV RUST_LOG=debug
+COPY --from=builder /app/target/release/network-enclave /usr/local/bin/
 
 # Expose the service port
 EXPOSE 5555
 
 # Run the binary
-CMD ["network-enclave"]
+ENTRYPOINT ["/usr/local/bin/network-enclave"]
