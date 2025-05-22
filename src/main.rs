@@ -1,5 +1,6 @@
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 use hex::FromHex;
 
@@ -126,26 +127,16 @@ impl SecureEnclave {
     /// This function assumes that the signer can spend all of the transaction inputs.
     pub fn sign_transaction(
         &self,
-        evm_address: &[u8; 20],
-        inputs: Vec<(OutPoint, u64)>,
+        inputs: Vec<(OutPoint, u64, [u8; 20])>,
         outputs: Vec<(Address, u64)>,
     ) -> Result<Transaction, Box<dyn std::error::Error>> {
-        let path = Self::evm_address_to_btc_derivation_path(evm_address)?;
-        let child_key = self.master_key.derive_priv(&self.secp, &path)?;
-        let public_key = child_key.private_key.public_key(&self.secp);
-
-        // Create P2WPKH script
-        let pubkey_hash = hash160::Hash::hash(&public_key.serialize());
-        let wpubkey_hash = bitcoin::WPubkeyHash::from_raw_hash(pubkey_hash);
-        let p2wpkh_script = ScriptBuf::new_p2wpkh(&wpubkey_hash);
-
         // Construct unsigned transaction
         let mut tx = Transaction {
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
             input: inputs
                 .iter()
-                .map(|(outpoint, _)| TxIn {
+                .map(|(outpoint, _, _)| TxIn {
                     previous_output: *outpoint,
                     script_sig: ScriptBuf::new(),
                     sequence: Sequence(u32::MAX),
@@ -161,7 +152,16 @@ impl SecureEnclave {
                 .collect(),
         };
 
-        for (input_index, (_outpoint, input_value)) in inputs.iter().enumerate() {
+        for (input_index, (_outpoint, input_value, evm_addr)) in inputs.iter().enumerate() {
+            let path = Self::evm_address_to_btc_derivation_path(evm_addr)?;
+            let child_key = self.master_key.derive_priv(&self.secp, &path)?;
+            let public_key = child_key.private_key.public_key(&self.secp);
+
+            // Create P2WPKH script for this input
+            let pubkey_hash = hash160::Hash::hash(&public_key.serialize());
+            let wpubkey_hash = bitcoin::WPubkeyHash::from_raw_hash(pubkey_hash);
+            let p2wpkh_script = ScriptBuf::new_p2wpkh(&wpubkey_hash);
+
             let sighash = SighashCache::new(&tx).p2wpkh_signature_hash(
                 input_index,
                 &p2wpkh_script,
@@ -180,7 +180,7 @@ impl SecureEnclave {
 
             let mut witness = Witness::default();
             witness.push(signature_with_hashtype);
-            witness.push(child_key.private_key.public_key(&self.secp).serialize());
+            witness.push(public_key.serialize());
 
             tx.input[input_index].witness = witness;
         }
@@ -218,6 +218,7 @@ struct InputData {
     txid: String,
     vout: u32,
     amount: u64,
+    address: String,
 }
 
 #[derive(Deserialize)]
@@ -228,7 +229,6 @@ struct OutputData {
 
 #[derive(Deserialize)]
 struct SignTransactionRequest {
-    evm_address: String,
     inputs: Vec<InputData>,
     outputs: Vec<OutputData>,
 }
@@ -241,6 +241,7 @@ struct SignTransactionResponse {
 struct AppState {
     enclave: Arc<SecureEnclave>,
     api_key: String,
+    address_map: Mutex<HashMap<String, [u8; 20]>>,
 }
 
 // API validation
@@ -284,8 +285,13 @@ async fn derive_address(
     match enclave.derive_bitcoin_address(&evm_addr_bytes) {
         Ok(address) => {
             debug!("Derived Bitcoin address: {:?}", address);
+            let address_str = address.to_string();
+            {
+                let mut map = state.address_map.lock().unwrap();
+                map.insert(address_str.clone(), evm_addr_bytes);
+            }
             HttpResponse::Ok().json(DeriveAddressResponse {
-                address: address.to_string(),
+                address: address_str,
             })
         }
         Err(e) => {
@@ -310,33 +316,33 @@ async fn sign_transaction(
 
     let enclave = &state.enclave;
 
-    info!(
-        "Signing transaction for address: {}, total amount: {} satoshis",
-        tx_req.evm_address,
-        tx_req.outputs.iter().map(|o| o.amount).sum::<u64>()
-    );
-
-    let evm_addr_bytes = match eth_addr_to_bytes_slice(&tx_req.evm_address) {
-        Ok(addr) => addr,
-        Err(e) => {
-            return HttpResponse::BadRequest()
-                .body(format!("Cannot convert Ethereum address to bytes: {}", e))
-        }
-    };
-
-    let inputs: Vec<(OutPoint, u64)> = tx_req
+    let inputs_res: Result<Vec<(OutPoint, u64, [u8; 20])>, String> = tx_req
         .inputs
         .iter()
         .map(|input| {
-            (
+            let evm = {
+                let map = state.address_map.lock().unwrap();
+                map.get(&input.address)
+                    .cloned()
+                    .ok_or_else(|| format!("Unknown address: {}", input.address))
+            }?;
+
+            Ok((
                 OutPoint {
-                    txid: Txid::from_str(&input.txid).expect("Invalid txid"),
+                    txid: Txid::from_str(&input.txid)
+                        .map_err(|_| format!("Invalid txid: {}", input.txid))?,
                     vout: input.vout,
                 },
                 input.amount,
-            )
+                evm,
+            ))
         })
         .collect();
+
+    let inputs = match inputs_res {
+        Ok(i) => i,
+        Err(e) => return HttpResponse::BadRequest().body(e),
+    };
 
     let outputs: Result<Vec<(Address, u64)>, Box<dyn std::error::Error>> = tx_req
         .outputs
@@ -354,7 +360,8 @@ async fn sign_transaction(
         Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {}", e)),
     };
 
-    match enclave.sign_transaction(&evm_addr_bytes, inputs, outputs) {
+    info!("Signing transaction with {} inputs", inputs.len());
+    match enclave.sign_transaction(inputs, outputs) {
         Ok(signed_tx) => {
             debug!("Signed transaction: {:?}", signed_tx);
             HttpResponse::Ok().json(SignTransactionResponse {
@@ -424,6 +431,7 @@ async fn main() -> std::io::Result<()> {
     let app_state = web::Data::new(AppState {
         enclave: enclave.clone(),
         api_key: api_key.clone(),
+        address_map: Mutex::new(HashMap::new()),
     });
 
     let bind_addr = format!("{}:{}", args.host, args.port);
