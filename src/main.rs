@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 use hex::FromHex;
 
