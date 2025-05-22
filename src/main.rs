@@ -265,7 +265,10 @@ async fn derive_address(
     req: web::Json<DeriveAddressRequest>,
 ) -> impl Responder {
     if !check_api_key(&http_req, &state.api_key) {
-        warn!("Unauthorized derive_address attempt from {:?}", http_req.peer_addr());
+        warn!(
+            "Unauthorized derive_address attempt from {:?}",
+            http_req.peer_addr()
+        );
         return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
     }
 
@@ -298,7 +301,10 @@ async fn sign_transaction(
     tx_req: web::Json<SignTransactionRequest>,
 ) -> impl Responder {
     if !check_api_key(&req, &state.api_key) {
-        warn!("Unauthorized sign_transaction attempt from {:?}", req.peer_addr());
+        warn!(
+            "Unauthorized sign_transaction attempt from {:?}",
+            req.peer_addr()
+        );
         return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
     }
 
