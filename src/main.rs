@@ -238,9 +238,13 @@ struct SignTransactionResponse {
     signed_tx: String,
 }
 
+struct AppState {
+    enclave: Arc<SecureEnclave>,
+    api_key: String,
+}
+
 // API validation
-async fn check_api_key(req: &actix_web::HttpRequest) -> bool {
-    let expected_key = std::env::var("API_KEY").unwrap_or_default();
+fn check_api_key(req: &actix_web::HttpRequest, expected_key: &str) -> bool {
     if expected_key.is_empty() {
         return false;
     }
@@ -256,9 +260,19 @@ async fn check_api_key(req: &actix_web::HttpRequest) -> bool {
 
 // API handlers
 async fn derive_address(
-    enclave: web::Data<Arc<SecureEnclave>>,
+    http_req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
     req: web::Json<DeriveAddressRequest>,
 ) -> impl Responder {
+    if !check_api_key(&http_req, &state.api_key) {
+        warn!(
+            "Unauthorized derive_address attempt from {:?}",
+            http_req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
+    }
+
+    let enclave = &state.enclave;
     let evm_addr_bytes = match eth_addr_to_bytes_slice(&req.evm_address) {
         Ok(addr) => addr,
         Err(e) => {
@@ -283,13 +297,18 @@ async fn derive_address(
 
 async fn sign_transaction(
     req: actix_web::HttpRequest,
-    enclave: web::Data<Arc<SecureEnclave>>,
+    state: web::Data<AppState>,
     tx_req: web::Json<SignTransactionRequest>,
 ) -> impl Responder {
-    // Check API key
-    if !check_api_key(&req).await {
-        return HttpResponse::Unauthorized().body("Invalid API key");
+    if !check_api_key(&req, &state.api_key) {
+        warn!(
+            "Unauthorized sign_transaction attempt from {:?}",
+            req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
     }
+
+    let enclave = &state.enclave;
 
     info!(
         "Signing transaction for address: {}, total amount: {} satoshis",
@@ -368,9 +387,9 @@ async fn main() -> std::io::Result<()> {
 
     info!("Starting enclave service...");
 
-    let api_key = std::env::var("API_KEY").unwrap_or_default();
+    let api_key = std::env::var("ENCLAVE_API_KEY").unwrap_or_default();
     if api_key.is_empty() {
-        warn!("WARNING: API_KEY environment variable is not set. Protected endpoints will be inaccessible.");
+        warn!("ENCLAVE_API_KEY environment variable is not set. Protected endpoints will reject requests.");
     }
 
     // Get seed from environment variable
@@ -402,14 +421,17 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let enclave_data = web::Data::new(enclave);
+    let app_state = web::Data::new(AppState {
+        enclave: enclave.clone(),
+        api_key: api_key.clone(),
+    });
 
     let bind_addr = format!("{}:{}", args.host, args.port);
     info!("Binding to {}", bind_addr);
 
     HttpServer::new(move || {
         App::new()
-            .app_data(enclave_data.clone())
+            .app_data(app_state.clone())
             // Public routes
             .route("/derive_address", web::post().to(derive_address))
             .route("/health", web::get().to(health_check))
