@@ -32,7 +32,7 @@ cd network-enclave
 The service requires the following environment variables:
 
 - `BIP32_SEED` - Hex-encoded seed for the BIP32 master key (mandatory)
-- `API_KEY` - API key for protected endpoints (if not set, protected endpoints will be inaccessible)
+- `ENCLAVE_API_KEY` - API key for protected endpoints (if not set, protected endpoints will reject requests)
 - `RUST_LOG` - Log level (e.g., info, debug, warn) - defaults to info
 
 ### Build and Run
@@ -41,12 +41,12 @@ The service requires the following environment variables:
 cargo build --release
 
 # run
-BIP32_SEED=000102030405060708090a0b0c0d0e0f API_KEY=your_api_key cargo run --release
+BIP32_SEED=000102030405060708090a0b0c0d0e0f ENCLAVE_API_KEY=your_api_key cargo run --release
 ```
 or if you have Just installed:
 
 ```sh
-BIP32_SEED=000102030405060708090a0b0c0d0e0f API_KEY=your_api_key just run
+BIP32_SEED=000102030405060708090a0b0c0d0e0f ENCLAVE_API_KEY=your_api_key just run
 ```
 
 ### Command-Line Arguments
@@ -59,16 +59,17 @@ The service supports the following command-line arguments:
 
 Example with custom arguments:
 ```
-BIP32_SEED=000102030405060708090a0b0c0d0e0f API_KEY=your_api_key cargo run --release -- --host 0.0.0.0 --port 8080 --network regtest
+BIP32_SEED=000102030405060708090a0b0c0d0e0f ENCLAVE_API_KEY=your_api_key cargo run --release -- --host 0.0.0.0 --port 8080 --network regtest
 ```
 
 ## API Endpoints
 
-### 1. Derive Bitcoin Address (Public)
-Derives a Bitcoin address from an Ethereum address.
+### 1. Derive Bitcoin Address (Protected)
+Derives a Bitcoin address from an Ethereum address. Requires the `X-API-Key` header.
 ```sh
 curl -X POST http://localhost:5555/derive_address \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
   -d '{"ethereum_address": "0xF9F6608792F3efC3930D4083F52CEd39EB2F20D8"}'
 ```
 Response:
@@ -83,6 +84,7 @@ Signs a Bitcoin transaction using keys derived from an Ethereum address. Require
 ```sh
 curl -X POST http://localhost:5555/sign_transaction \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your_api_key" \
   -d '{
     "ethereum_address": "742d35Cc6634C0532925a3b844Bc454e4438f44e",
     "inputs": [
@@ -114,7 +116,7 @@ Response:
 - **Networks**: The service supports all Bitcoin networks (Regtest, Testnet, Signet, and Mainnet). The network affects the address format and network parameters.
 - **Security**:
   - The master seed must be provided as an environment variable (`BIP32_SEED`).
-  - Protected endpoints require an API key to be set via the `API_KEY` environment variable.
+  - Protected endpoints require an API key to be set via the `ENCLAVE_API_KEY` environment variable.
   - No direct access to private keys is exposed via the API.
 
 ## Notes:
