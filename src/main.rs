@@ -2,20 +2,17 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use hex::FromHex;
-
-use serde::{Deserialize, Serialize};
-
-use clap::Parser;
-
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
-use bitcoin::hashes::{hash160, Hash};
+use hex::FromHex;
+use serde::{Deserialize, Serialize};
+use clap::Parser;
 
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
+use bitcoin::hashes::{hash160, Hash};
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::{
@@ -24,7 +21,7 @@ use bitcoin::{
 };
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(about = "server that holds constructs a BIP32 wallet with signing capabilities")]
 struct Args {
     /// Host address to bind to
     #[arg(long, default_value = "127.0.0.1")]
@@ -440,11 +437,9 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(app_state.clone())
-            // Public routes
-            .route("/derive_address", web::post().to(derive_address))
-            .route("/health", web::get().to(health_check))
-            // Protected routes
-            .route("/sign_transaction", web::post().to(sign_transaction))
+            .route("/derive_address", web::post().to(derive_address)) // protected
+            .route("/health", web::get().to(health_check)) // protected
+            .route("/sign_transaction", web::post().to(sign_transaction)) // protected
     })
     .bind(&bind_addr)?
     .run()
