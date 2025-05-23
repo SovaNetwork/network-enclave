@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
+use clap::Parser;
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
-use clap::Parser;
 
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
