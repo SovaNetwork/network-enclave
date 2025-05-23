@@ -374,8 +374,7 @@ async fn sign_transaction(
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
-        "status": "healthy",
-        "timestamp": chrono::Utc::now().to_rfc3339()
+        "status": "healthy"
     }))
 }
 
@@ -438,7 +437,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(app_state.clone())
             .route("/derive_address", web::post().to(derive_address)) // protected
-            .route("/health", web::get().to(health_check)) // protected
+            .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
     })
     .bind(&bind_addr)?
