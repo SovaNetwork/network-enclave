@@ -23,7 +23,7 @@ Ensure you have the following installed on your machine:
 First, clone the repository to your local machine:
 
 ```sh
-git clone https://github.com/OnCorsa/network-enclave.git
+git clone https://github.com/sovanetwork/network-enclave.git
 cd network-enclave
 ```
 
@@ -112,14 +112,10 @@ Response:
 
 ## Implementation Details
 - **Key Derivation**: The service uses a deterministic approach to derive Bitcoin keys from Ethereum addresses. The derivation path includes components of the Ethereum address split into 4-byte chunks to fit within BIP32's constraints.
-- **Address Type**: All derived addresses are P2WPKH (Pay-to-Witness-Public-Key-Hash, SegWit) addresses, which are more efficient and have lower transaction fees.
+- **Address Type**: All derived addresses are P2WPKH (Pay-to-Witness-Public-Key-Hash, SegWit) addresses. If other address types are needed, the code would need to be modified.
+- **Transaction Signing**: The API does not validate that the transaction inputs can actually be spent. It's the caller's responsibility to ensure the provided inputs are valid and can be spent by the derived key.
 - **Networks**: The service supports all Bitcoin networks (Regtest, Testnet, Signet, and Mainnet). The network affects the address format and network parameters.
 - **Security**:
-  - The master seed must be provided as an environment variable (`BIP32_SEED`).
+  - The master seed must be provided as an environment variable (`BIP32_SEED`). In a production environment, ensure the BIP32_SEED is securely generated and stored, and that it's kept private.
   - Protected endpoints require an API key to be set via the `ENCLAVE_API_KEY` environment variable.
   - No direct access to private keys is exposed via the API.
-
-## Notes:
-- In a production environment, ensure the BIP32_SEED is securely generated and stored, and that it's kept private.
-- The API does not validate that the transaction inputs can actually be spent. It's the caller's responsibility to ensure the provided inputs are valid and can be spent by the derived key.
-- The service assumes all derived addresses are P2WPKH. If other address types are needed, the code would need to be modified
