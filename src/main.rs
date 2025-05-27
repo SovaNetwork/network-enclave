@@ -9,7 +9,6 @@ use hex::FromHex;
 use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error, info, warn};
-use tracing_subscriber::EnvFilter;
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
 use bitcoin::hashes::{hash160, Hash};
@@ -34,6 +33,10 @@ struct Args {
     /// Bitcoin network to use (regtest, testnet, mainnet)
     #[arg(long, value_parser = parse_network, default_value = "regtest")]
     network: Network,
+
+    /// Logging level (error, warn, info, debug, trace)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 fn parse_network(s: &str) -> Result<Network, &'static str> {
@@ -385,7 +388,7 @@ async fn main() -> std::io::Result<()> {
 
     // Initialize the tracing subscriber
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
+        .with_env_filter(&args.log_level)
         .init();
 
     info!("Starting enclave service...");
