@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error, info, warn};
 
-use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv};
+use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
 use bitcoin::hashes::{hash160, Hash};
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
@@ -65,6 +65,11 @@ impl SecureEnclave {
             master_key,
             secp: Secp256k1::new(),
         })
+    }
+
+    /// Get the master extended public key
+    pub fn get_master_xpub(&self) -> Xpub {
+        Xpub::from_priv(&self.secp, &self.master_key)
     }
 
     /// Derive the corresponding bip32 derivation path from the evm address
@@ -238,6 +243,12 @@ struct SignTransactionResponse {
     signed_tx: String,
 }
 
+#[derive(Serialize)]
+struct MasterXpubResponse {
+    master_xpub: String,
+    network: String,
+}
+
 struct AppState {
     enclave: Arc<SecureEnclave>,
     api_key: String,
@@ -375,6 +386,33 @@ async fn sign_transaction(
     }
 }
 
+async fn get_master_xpub(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    if !check_api_key(&req, &state.api_key) {
+        warn!(
+            "Unauthorized get_master_xpub attempt from {:?}",
+            req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
+    }
+
+    let enclave = &state.enclave;
+    let master_xpub = enclave.get_master_xpub();
+
+    HttpResponse::Ok().json(MasterXpubResponse {
+        master_xpub: master_xpub.to_string(),
+        network: match enclave.network {
+            Network::Bitcoin => "mainnet".to_string(),
+            Network::Testnet => "testnet".to_string(),
+            Network::Signet => "signet".to_string(),
+            Network::Regtest => "regtest".to_string(),
+            _ => format!("{:?}", enclave.network),
+        },
+    })
+}
+
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy"
@@ -442,6 +480,7 @@ async fn main() -> std::io::Result<()> {
             .route("/derive_address", web::post().to(derive_address)) // protected
             .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
+            .route("/master_xpub", web::get().to(get_master_xpub)) // protected
     })
     .bind(&bind_addr)?
     .run()
