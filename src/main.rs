@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
-use bitcoin::hashes::{hash160, Hash};
+use bitcoin::hashes::{hash160, sha256, Hash};
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::{
@@ -72,46 +72,49 @@ impl SecureEnclave {
         Xpub::from_priv(&self.secp, &self.master_key)
     }
 
-    /// Derive the corresponding bip32 derivation path from the evm address
+    /// Get the extended public key for Ethereum address derivation
+    /// This is derived from m/44'/0' and is safe to share publicly
+    pub fn get_ethereum_derivation_xpub(&self) -> Xpub {
+        let path = DerivationPath::from(vec![
+            ChildNumber::from_hardened_idx(44).unwrap(), // BIP44
+            ChildNumber::from_hardened_idx(0).unwrap(),  // Bitcoin
+        ]);
+
+        let derived_key = self.master_key.derive_priv(&self.secp, &path).unwrap();
+        Xpub::from_priv(&self.secp, &derived_key)
+    }
+
+    /// This eliminates collisions while ensuring deterministic derivation
     fn evm_address_to_btc_derivation_path(
         evm_address: &[u8; 20],
     ) -> Result<DerivationPath, Box<dyn std::error::Error>> {
-        let path = DerivationPath::from(vec![
+        // Hash the Ethereum address to get uniform distribution and avoid collisions
+        let hash = sha256::Hash::hash(evm_address);
+        let hash_bytes = hash.to_byte_array();
+        
+        let mut path_components = vec![
             ChildNumber::from_hardened_idx(44)?, // Purpose: BIP44
             ChildNumber::from_hardened_idx(0)?,  // Coin type: Bitcoin
-            // split into 4 byte chunks to fit the entire eth address
-            ChildNumber::from(
-                ((evm_address[0] as u32) << 24)
-                    | ((evm_address[1] as u32) << 16)
-                    | ((evm_address[2] as u32) << 8)
-                    | (evm_address[3] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[4] as u32) << 24)
-                    | ((evm_address[5] as u32) << 16)
-                    | ((evm_address[6] as u32) << 8)
-                    | (evm_address[7] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[8] as u32) << 24)
-                    | ((evm_address[9] as u32) << 16)
-                    | ((evm_address[10] as u32) << 8)
-                    | (evm_address[11] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[12] as u32) << 24)
-                    | ((evm_address[13] as u32) << 16)
-                    | ((evm_address[14] as u32) << 8)
-                    | (evm_address[15] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[16] as u32) << 24)
-                    | ((evm_address[17] as u32) << 16)
-                    | ((evm_address[18] as u32) << 8)
-                    | (evm_address[19] as u32),
-            ), // uint32, 4 bytes
-        ]); // uint160 (20 bytes) = ethereum address
-        Ok(path)
+        ];
+        
+        // Split 32-byte hash into chunks and create non-hardened derivation path
+        // Use 7 chunks of 4 bytes each (28 bytes total) for reasonable path depth
+        for i in 0..7 {
+            let chunk_start = i * 4;
+            let chunk_bytes = &hash_bytes[chunk_start..chunk_start + 4];
+            
+            // Convert 4 bytes to u32 and mask to ensure non-hardened
+            let value = u32::from_be_bytes([
+                chunk_bytes[0],
+                chunk_bytes[1], 
+                chunk_bytes[2],
+                chunk_bytes[3]
+            ]) & 0x7FFFFFFF; // Clear MSB to ensure non-hardened
+            
+            path_components.push(ChildNumber::from(value));
+        }
+        
+        Ok(DerivationPath::from(path_components))
     }
 
     /// Given an Ethereum address (20-byte array), derive the corresponding Bitcoin address
@@ -249,6 +252,12 @@ struct MasterXpubResponse {
     network: String,
 }
 
+#[derive(Serialize)]
+struct DerivationXpubResponse {
+    ethereum_derivation_xpub: String,
+    network: String,
+}
+
 struct AppState {
     enclave: Arc<SecureEnclave>,
     api_key: String,
@@ -296,7 +305,7 @@ async fn derive_address(
     match enclave.derive_bitcoin_address(&evm_addr_bytes) {
         Ok(address) => {
             debug!("Derived Bitcoin address: {:?}", address);
-            let address_str = address.to_string();
+            let address_str = address.to_string().to_lowercase();
             {
                 let mut map = state.address_map.lock().unwrap();
                 map.insert(address_str.clone(), evm_addr_bytes);
@@ -310,6 +319,33 @@ async fn derive_address(
             HttpResponse::InternalServerError().body(e.to_string())
         }
     }
+}
+
+async fn get_derivation_xpub(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    if !check_api_key(&req, &state.api_key) {
+        warn!(
+            "Unauthorized get_derivation_xpub attempt from {:?}",
+            req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
+    }
+
+    let enclave = &state.enclave;
+    let derivation_xpub = enclave.get_ethereum_derivation_xpub();
+
+    HttpResponse::Ok().json(DerivationXpubResponse {
+        ethereum_derivation_xpub: derivation_xpub.to_string(),
+        network: match enclave.network {
+            Network::Bitcoin => "mainnet".to_string(),
+            Network::Testnet => "testnet".to_string(),
+            Network::Signet => "signet".to_string(),
+            Network::Regtest => "regtest".to_string(),
+            _ => format!("{:?}", enclave.network),
+        },
+    })
 }
 
 async fn sign_transaction(
@@ -333,7 +369,7 @@ async fn sign_transaction(
         .map(|input| {
             let evm = {
                 let map = state.address_map.lock().unwrap();
-                map.get(&input.address)
+                map.get(&input.address.to_lowercase())
                     .cloned()
                     .ok_or_else(|| format!("Unknown address: {}", input.address))
             }?;
@@ -478,6 +514,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(app_state.clone())
             .route("/derive_address", web::post().to(derive_address)) // protected
+            .route("/derivation_xpub", web::get().to(get_derivation_xpub)) // protected
             .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
             .route("/master_xpub", web::get().to(get_master_xpub)) // protected
