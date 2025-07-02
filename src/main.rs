@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
-use bitcoin::hashes::{hash160, Hash};
+use bitcoin::hashes::{hash160, sha256, Hash, HashEngine};
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::{
@@ -19,8 +19,10 @@ use bitcoin::{
     Txid, Witness,
 };
 
+const SOVA_ADDR_CONVERT_DOMAIN_TAG: &[u8] = b"sova:evm2btc:v1.0";
+
 #[derive(Parser, Debug)]
-#[command(about = "server that holds constructs a BIP32 wallet with signing capabilities")]
+#[command(about = "server that holds a BIP32 wallet with signing capabilities")]
 struct Args {
     /// Host address to bind to
     #[arg(long, default_value = "127.0.0.1")]
@@ -67,51 +69,41 @@ impl SecureEnclave {
         })
     }
 
-    /// Get the master extended public key
-    pub fn get_master_xpub(&self) -> Xpub {
-        Xpub::from_priv(&self.secp, &self.master_key)
-    }
-
     /// Derive the corresponding bip32 derivation path from the evm address
     fn evm_address_to_btc_derivation_path(
         evm_address: &[u8; 20],
     ) -> Result<DerivationPath, Box<dyn std::error::Error>> {
-        let path = DerivationPath::from(vec![
+        // EXACT same logic as network code - hash with domain separation
+        let mut engine = sha256::Hash::engine();
+        engine.input(SOVA_ADDR_CONVERT_DOMAIN_TAG);
+        engine.input(evm_address);
+        let hash = sha256::Hash::from_engine(engine);
+        let hash_bytes = hash.to_byte_array();
+
+        // Create base path: m/44'/0' (same as network code sova_xpub derivation)
+        let mut chunks = vec![
             ChildNumber::from_hardened_idx(44)?, // Purpose: BIP44
             ChildNumber::from_hardened_idx(0)?,  // Coin type: Bitcoin
-            // split into 4 byte chunks to fit the entire eth address
-            ChildNumber::from(
-                ((evm_address[0] as u32) << 24)
-                    | ((evm_address[1] as u32) << 16)
-                    | ((evm_address[2] as u32) << 8)
-                    | (evm_address[3] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[4] as u32) << 24)
-                    | ((evm_address[5] as u32) << 16)
-                    | ((evm_address[6] as u32) << 8)
-                    | (evm_address[7] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[8] as u32) << 24)
-                    | ((evm_address[9] as u32) << 16)
-                    | ((evm_address[10] as u32) << 8)
-                    | (evm_address[11] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[12] as u32) << 24)
-                    | ((evm_address[13] as u32) << 16)
-                    | ((evm_address[14] as u32) << 8)
-                    | (evm_address[15] as u32),
-            ), // uint32, 4 bytes
-            ChildNumber::from(
-                ((evm_address[16] as u32) << 24)
-                    | ((evm_address[17] as u32) << 16)
-                    | ((evm_address[18] as u32) << 8)
-                    | (evm_address[19] as u32),
-            ), // uint32, 4 bytes
-        ]); // uint160 (20 bytes) = ethereum address
-        Ok(path)
+        ];
+
+        // Add 7 non-hardened levels from hash (matching network code exactly)
+        for i in 0..7 {
+            let chunk_start = i * 4;
+            let chunk_bytes = &hash_bytes[chunk_start..chunk_start + 4];
+
+            // Convert 4 bytes to u32 and mask to ensure non-hardened
+            // MUST match network code masking
+            let value = u32::from_be_bytes([
+                chunk_bytes[0],
+                chunk_bytes[1],
+                chunk_bytes[2],
+                chunk_bytes[3],
+            ]) & 0x7FFFFFFF; // Clear MSB to ensure non-hardened
+
+            chunks.push(ChildNumber::from(value));
+        }
+
+        Ok(DerivationPath::from(chunks))
     }
 
     /// Given an Ethereum address (20-byte array), derive the corresponding Bitcoin address
@@ -119,9 +111,21 @@ impl SecureEnclave {
         &self,
         evm_address: &[u8; 20],
     ) -> Result<Address, Box<dyn std::error::Error>> {
-        let path = Self::evm_address_to_btc_derivation_path(evm_address)?;
+        // Derive to the ethereum xpub level (m/44'/0')
+        let ethereum_path = DerivationPath::from(vec![
+            ChildNumber::from_hardened_idx(44)?,
+            ChildNumber::from_hardened_idx(0)?,
+        ]);
+        let ethereum_xpriv = self.master_key.derive_priv(&self.secp, &ethereum_path)?;
 
-        let child_key = self.master_key.derive_priv(&self.secp, &path)?;
+        // Then get the hash-based derivation path
+        let full_path = Self::evm_address_to_btc_derivation_path(evm_address)?;
+        // Extract just the non-hardened part (skip m/44'/0')
+        let child_path =
+            DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
+
+        // Derive from ethereum xpriv using child path
+        let child_key = ethereum_xpriv.derive_priv(&self.secp, &child_path)?;
         let public_key = PublicKey::new(child_key.private_key.public_key(&self.secp));
 
         Address::p2wpkh(&public_key, self.network).map_err(|e| e.into())
@@ -157,9 +161,19 @@ impl SecureEnclave {
                 .collect(),
         };
 
+        // Derive ethereum xpriv once
+        let ethereum_path = DerivationPath::from(vec![
+            ChildNumber::from_hardened_idx(44)?,
+            ChildNumber::from_hardened_idx(0)?,
+        ]);
+        let ethereum_xpriv = self.master_key.derive_priv(&self.secp, &ethereum_path)?;
+
         for (input_index, (_outpoint, input_value, evm_addr)) in inputs.iter().enumerate() {
-            let path = Self::evm_address_to_btc_derivation_path(evm_addr)?;
-            let child_key = self.master_key.derive_priv(&self.secp, &path)?;
+            let full_path = Self::evm_address_to_btc_derivation_path(evm_addr)?;
+            let child_path =
+                DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
+
+            let child_key = ethereum_xpriv.derive_priv(&self.secp, &child_path)?;
             let public_key = child_key.private_key.public_key(&self.secp);
 
             // Create P2WPKH script for this input
@@ -192,6 +206,15 @@ impl SecureEnclave {
 
         Ok(tx)
     }
+
+    pub fn get_sova_xpub(&self) -> Result<Xpub, Box<dyn std::error::Error>> {
+        let ethereum_path = DerivationPath::from(vec![
+            ChildNumber::from_hardened_idx(44)?,
+            ChildNumber::from_hardened_idx(0)?,
+        ]);
+        let ethereum_xpriv = self.master_key.derive_priv(&self.secp, &ethereum_path)?;
+        Ok(Xpub::from_priv(&self.secp, &ethereum_xpriv))
+    }
 }
 
 // API Helpers
@@ -202,7 +225,7 @@ pub fn eth_addr_to_bytes_slice(eth_addr: &str) -> Result<[u8; 20], Box<dyn std::
     };
 
     let eth_addr_array =
-        <[u8; 20]>::from_hex(eth_addr).map_err(|e| format!("Invalid Ethereum address: {}", e))?;
+        <[u8; 20]>::from_hex(eth_addr).map_err(|e| format!("Invalid Ethereum address: {e}"))?;
 
     Ok(eth_addr_array)
 }
@@ -244,8 +267,8 @@ struct SignTransactionResponse {
 }
 
 #[derive(Serialize)]
-struct MasterXpubResponse {
-    master_xpub: String,
+struct EthereumXpubResponse {
+    sova_xpub: String,
     network: String,
 }
 
@@ -289,7 +312,7 @@ async fn derive_address(
         Ok(addr) => addr,
         Err(e) => {
             return HttpResponse::BadRequest()
-                .body(format!("Cannot convert EVM address to bytes: {}", e))
+                .body(format!("Cannot convert EVM address to bytes: {e}"))
         }
     };
 
@@ -368,7 +391,7 @@ async fn sign_transaction(
 
     let outputs = match outputs {
         Ok(o) => o,
-        Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {}", e)),
+        Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {e}")),
     };
 
     info!("Signing transaction with {} inputs", inputs.len());
@@ -386,31 +409,32 @@ async fn sign_transaction(
     }
 }
 
-async fn get_master_xpub(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
+async fn get_sova_xpub(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
     if !check_api_key(&req, &state.api_key) {
         warn!(
-            "Unauthorized get_master_xpub attempt from {:?}",
+            "Unauthorized get_sova_xpub attempt from {:?}",
             req.peer_addr()
         );
         return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
     }
 
     let enclave = &state.enclave;
-    let master_xpub = enclave.get_master_xpub();
-
-    HttpResponse::Ok().json(MasterXpubResponse {
-        master_xpub: master_xpub.to_string(),
-        network: match enclave.network {
-            Network::Bitcoin => "mainnet".to_string(),
-            Network::Testnet => "testnet".to_string(),
-            Network::Signet => "signet".to_string(),
-            Network::Regtest => "regtest".to_string(),
-            _ => format!("{:?}", enclave.network),
-        },
-    })
+    match enclave.get_sova_xpub() {
+        Ok(sova_xpub) => HttpResponse::Ok().json(EthereumXpubResponse {
+            sova_xpub: sova_xpub.to_string(),
+            network: match enclave.network {
+                Network::Bitcoin => "mainnet".to_string(),
+                Network::Testnet => "testnet".to_string(),
+                Network::Signet => "signet".to_string(),
+                Network::Regtest => "regtest".to_string(),
+                _ => format!("{:?}", enclave.network),
+            },
+        }),
+        Err(e) => {
+            error!("Failed to get ethereum xpub: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
 }
 
 async fn health_check() -> impl Responder {
@@ -480,7 +504,7 @@ async fn main() -> std::io::Result<()> {
             .route("/derive_address", web::post().to(derive_address)) // protected
             .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
-            .route("/master_xpub", web::get().to(get_master_xpub)) // protected
+            .route("/sova_xpub", web::get().to(get_sova_xpub)) // protected
     })
     .bind(&bind_addr)?
     .run()
