@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Xpriv, Xpub};
-use bitcoin::hashes::{hash160, Hash, HashEngine, sha256};
+use bitcoin::hashes::{hash160, sha256, Hash, HashEngine};
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::{
@@ -121,7 +121,8 @@ impl SecureEnclave {
         // Then get the hash-based derivation path
         let full_path = Self::evm_address_to_btc_derivation_path(evm_address)?;
         // Extract just the non-hardened part (skip m/44'/0')
-        let child_path = DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
+        let child_path =
+            DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
 
         // Derive from ethereum xpriv using child path
         let child_key = ethereum_xpriv.derive_priv(&self.secp, &child_path)?;
@@ -169,8 +170,9 @@ impl SecureEnclave {
 
         for (input_index, (_outpoint, input_value, evm_addr)) in inputs.iter().enumerate() {
             let full_path = Self::evm_address_to_btc_derivation_path(evm_addr)?;
-            let child_path = DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
-            
+            let child_path =
+                DerivationPath::from(full_path.into_iter().skip(2).cloned().collect::<Vec<_>>());
+
             let child_key = ethereum_xpriv.derive_priv(&self.secp, &child_path)?;
             let public_key = child_key.private_key.public_key(&self.secp);
 
@@ -407,10 +409,7 @@ async fn sign_transaction(
     }
 }
 
-async fn get_sova_xpub(
-    req: actix_web::HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
+async fn get_sova_xpub(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
     if !check_api_key(&req, &state.api_key) {
         warn!(
             "Unauthorized get_sova_xpub attempt from {:?}",
@@ -437,7 +436,6 @@ async fn get_sova_xpub(
         }
     }
 }
-
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
