@@ -225,7 +225,7 @@ pub fn eth_addr_to_bytes_slice(eth_addr: &str) -> Result<[u8; 20], Box<dyn std::
     };
 
     let eth_addr_array =
-        <[u8; 20]>::from_hex(eth_addr).map_err(|e| format!("Invalid Ethereum address: {}", e))?;
+        <[u8; 20]>::from_hex(eth_addr).map_err(|e| format!("Invalid Ethereum address: {e}"))?;
 
     Ok(eth_addr_array)
 }
@@ -312,7 +312,7 @@ async fn derive_address(
         Ok(addr) => addr,
         Err(e) => {
             return HttpResponse::BadRequest()
-                .body(format!("Cannot convert EVM address to bytes: {}", e))
+                .body(format!("Cannot convert EVM address to bytes: {e}"))
         }
     };
 
@@ -391,7 +391,7 @@ async fn sign_transaction(
 
     let outputs = match outputs {
         Ok(o) => o,
-        Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {}", e)),
+        Err(e) => return HttpResponse::BadRequest().body(format!("Invalid output: {e}")),
     };
 
     info!("Signing transaction with {} inputs", inputs.len());
