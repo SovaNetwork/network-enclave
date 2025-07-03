@@ -9,6 +9,7 @@ Network Enclave is a Bitcoin signing service used by the Sova Network that hosts
 - Support for multiple Bitcoin networks (Regtest, Testnet, Signet, Mainnet)
 - Secure API key authentication for protected endpoints
 - Domain-separated hashing to prevent cross-protocol attacks
+- Persistent address mapping saved to disk for transaction signing
 - Collision-resistant address derivation with 2^108 security level
 
 ## Getting Started
@@ -59,6 +60,7 @@ The service supports the following command-line arguments:
 - `--port` - Port to listen on (default: 5555)
 - `--network` - Bitcoin network to use (options: regtest, testnet, signet, mainnet; default: regtest)
 - `--log-level` - Logging level (options: error, warn, info, debug, trace; default: info)
+- `--address-map-path` - File path for persisting the address map (default: ./data/address_map.bin)
 
 Example with custom arguments:
 ```sh
@@ -137,6 +139,15 @@ Response:
 {
   "signed_tx": "02000000000101b2a1f0e9..."
 }
+### 5. Get Address Map (Protected)
+Returns the current mapping of Bitcoin addresses to their source Ethereum addresses.
+```sh
+curl -X GET http://localhost:5555/address_map 
+  -H "X-API-Key: api_key_here"
+```
+Response:
+```json
+{"bcrt1q...":"0xf39f..."}
 ```
 
 ## Implementation Details
@@ -164,7 +175,7 @@ The service uses a cryptographically secure hash-based approach to derive Bitcoi
 ### Security Considerations
 - **Master Seed Security**: The `BIP32_SEED` must be cryptographically secure (256+ bits of entropy) and kept private
 - **API Key Protection**: Use strong API keys and ensure HTTPS in production
-- **Address Mapping**: The service maintains an in-memory mapping between Bitcoin addresses and Ethereum addresses for transaction signing
+- **Address Mapping**: The service persists the mapping between derived Bitcoin addresses and Ethereum addresses to the file specified by `--address-map-path`
 - **Network Validation**: All output addresses are validated against the specified Bitcoin network
 
 ### Integration with Sova Network
@@ -176,4 +187,4 @@ The service uses a cryptographically secure hash-based approach to derive Bitcoi
 ### Limitations
 - **Transaction Validation**: The API does not validate that transaction inputs can actually be spent - caller must ensure inputs are valid
 - **Address Type Constraints**: Only P2WPKH addresses are currently supported
-- **In-Memory State**: Address mappings are lost on service restart
+- **Address Map Persistence**: Address mappings are saved to disk (see `--address-map-path`); ensure the file persists across restarts
