@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
@@ -35,6 +36,10 @@ struct Args {
     /// Bitcoin network to use (regtest, testnet, mainnet)
     #[arg(long, value_parser = parse_network, default_value = "regtest")]
     network: Network,
+
+    /// Path to persist the address map
+    #[arg(long, default_value = "./data/address_map.bin")]
+    address_map_path: String,
 
     /// Logging level (error, warn, info, debug, trace)
     #[arg(long, default_value = "info")]
@@ -275,7 +280,8 @@ struct EthereumXpubResponse {
 struct AppState {
     enclave: Arc<SecureEnclave>,
     api_key: String,
-    address_map: Mutex<HashMap<String, [u8; 20]>>,
+    address_map: RwLock<HashMap<String, [u8; 20]>>,
+    address_map_path: PathBuf,
 }
 
 // API validation
@@ -321,8 +327,11 @@ async fn derive_address(
             debug!("Derived Bitcoin address: {:?}", address);
             let address_str = address.to_string();
             {
-                let mut map = state.address_map.lock().unwrap();
+                let mut map = state.address_map.write().unwrap();
                 map.insert(address_str.clone(), evm_addr_bytes);
+                if let Ok(serialized) = bincode::serialize(&*map) {
+                    let _ = std::fs::write(&state.address_map_path, serialized);
+                }
             }
             HttpResponse::Ok().json(DeriveAddressResponse {
                 address: address_str,
@@ -355,7 +364,7 @@ async fn sign_transaction(
         .iter()
         .map(|input| {
             let evm = {
-                let map = state.address_map.lock().unwrap();
+                let map = state.address_map.read().unwrap();
                 map.get(&input.address)
                     .cloned()
                     .ok_or_else(|| format!("Unknown address: {}", input.address))
@@ -437,6 +446,28 @@ async fn get_sova_xpub(req: actix_web::HttpRequest, state: web::Data<AppState>) 
     }
 }
 
+async fn get_address_map(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
+    if !check_api_key(&req, &state.api_key) {
+        warn!(
+            "Unauthorized get_address_map attempt from {:?}",
+            req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
+    }
+
+    let map = state.address_map.read().unwrap();
+    match serde_json::to_string(&*map) {
+        Ok(body) => HttpResponse::Ok().body(body),
+        Err(e) => {
+            error!("Failed to serialize address map: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy"
@@ -489,10 +520,17 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    let map_path = PathBuf::from(&args.address_map_path);
+    let address_map: HashMap<String, [u8; 20]> = match std::fs::read(&map_path) {
+        Ok(bytes) => bincode::deserialize(&bytes).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    };
+
     let app_state = web::Data::new(AppState {
         enclave: enclave.clone(),
         api_key: api_key.clone(),
-        address_map: Mutex::new(HashMap::new()),
+        address_map: RwLock::new(address_map),
+        address_map_path: map_path,
     });
 
     let bind_addr = format!("{}:{}", args.host, args.port);
@@ -505,8 +543,88 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
             .route("/sova_xpub", web::get().to(get_sova_xpub)) // protected
+            .route("/address_map", web::get().to(get_address_map)) // protected
     })
     .bind(&bind_addr)?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::Network;
+    use std::collections::HashMap;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn create_test_enclave() -> SecureEnclave {
+        // Use a fixed seed for deterministic testing
+        let seed = [0u8; 32];
+        SecureEnclave::new(&seed, Network::Regtest).unwrap()
+    }
+
+    #[test]
+    fn test_address_map_persistence() {
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let map_path = temp_dir.path().join("test_address_map.bin");
+
+        // Test data
+        let test_evm_addresses = vec![
+            "0x1234567890123456789012345678901234567890",
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "0x9876543210987654321098765432109876543210",
+        ];
+
+        // Phase 1: Create initial address map and persist it
+        {
+            let enclave = create_test_enclave();
+            let mut address_map = HashMap::new();
+
+            // Derive addresses and build the map
+            for evm_addr_str in &test_evm_addresses {
+                let evm_addr_bytes = eth_addr_to_bytes_slice(evm_addr_str).unwrap();
+                let btc_address = enclave.derive_bitcoin_address(&evm_addr_bytes).unwrap();
+                address_map.insert(btc_address.to_string(), evm_addr_bytes);
+            }
+
+            // Simulate the persistence logic from the actual code
+            let serialized = bincode::serialize(&address_map).unwrap();
+            fs::write(&map_path, serialized).unwrap();
+
+            // Verify the file was created
+            assert!(map_path.exists());
+
+            // Verify the map has the expected size
+            assert_eq!(address_map.len(), test_evm_addresses.len());
+        }
+
+        // Phase 2: Load the persisted address map and verify it matches
+        {
+            let enclave = create_test_enclave();
+
+            // Load the address map from disk (simulating service restart)
+            let loaded_map: HashMap<String, [u8; 20]> = {
+                let bytes = fs::read(&map_path).unwrap();
+                bincode::deserialize(&bytes).unwrap()
+            };
+
+            // Verify the loaded map has the correct size
+            assert_eq!(loaded_map.len(), test_evm_addresses.len());
+
+            // Verify each address mapping is correct
+            for evm_addr_str in &test_evm_addresses {
+                let evm_addr_bytes = eth_addr_to_bytes_slice(evm_addr_str).unwrap();
+                let expected_btc_address = enclave.derive_bitcoin_address(&evm_addr_bytes).unwrap();
+
+                // Check that the Bitcoin address exists in the loaded map
+                assert!(loaded_map.contains_key(&expected_btc_address.to_string()));
+
+                // Check that the EVM address bytes match
+                let stored_evm_bytes = loaded_map.get(&expected_btc_address.to_string()).unwrap();
+                assert_eq!(*stored_evm_bytes, evm_addr_bytes);
+            }
+        }
+    }
 }
