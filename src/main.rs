@@ -1,13 +1,12 @@
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::path::PathBuf;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
 use clap::Parser;
 use hex::FromHex;
-use bincode;
 use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error, info, warn};
@@ -447,7 +446,10 @@ async fn get_sova_xpub(req: actix_web::HttpRequest, state: web::Data<AppState>) 
     }
 }
 
-async fn get_address_map(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
+async fn get_address_map(
+    req: actix_web::HttpRequest,
+    state: web::Data<AppState>,
+) -> impl Responder {
     if !check_api_key(&req, &state.api_key) {
         warn!(
             "Unauthorized get_address_map attempt from {:?}",
