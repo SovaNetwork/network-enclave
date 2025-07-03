@@ -10,6 +10,7 @@ A Bitcoin signing service used by the Sova Network that hosts the network's mast
 - Secure API key authentication for protected endpoints
 - Domain-separated hashing to prevent cross-protocol attacks
 - Persistent address mapping saved to disk for easy restarts
+- Automatically creates the address mapping storage directory (`./data/`) if it doesn't exist
 - Collision-resistant address derivation with 2^108 security level
 
 ## Getting Started
@@ -142,7 +143,7 @@ Response:
 ### 5. Get Address Map (Protected)
 Returns the current mapping of Bitcoin addresses to their source EVM addresses.
 ```sh
-curl -X GET http://localhost:5555/address_map 
+curl -X GET http://localhost:5555/address_map \
   -H "X-API-Key: api_key_here"
 ```
 Response:

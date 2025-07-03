@@ -329,8 +329,17 @@ async fn derive_address(
             {
                 let mut map = state.address_map.write().unwrap();
                 map.insert(address_str.clone(), evm_addr_bytes);
-                if let Ok(serialized) = bincode::serialize(&*map) {
-                    let _ = std::fs::write(&state.address_map_path, serialized);
+                match bincode::serialize(&*map) {
+                    Ok(serialized) => {
+                        if let Err(e) = std::fs::write(&state.address_map_path, serialized) {
+                            error!("Failed to persist address map: {}", e);
+                            return HttpResponse::InternalServerError().body("Failed to save address mapping");
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to serialize address map: {}", e);
+                        return HttpResponse::InternalServerError().body("Failed to serialize address mapping");
+                    }
                 }
             }
             HttpResponse::Ok().json(DeriveAddressResponse {
@@ -521,9 +530,63 @@ async fn main() -> std::io::Result<()> {
     };
 
     let map_path = PathBuf::from(&args.address_map_path);
-    let address_map: HashMap<String, [u8; 20]> = match std::fs::read(&map_path) {
-        Ok(bytes) => bincode::deserialize(&bytes).unwrap_or_default(),
-        Err(_) => HashMap::new(),
+
+    // Ensure parent directories exist
+    if let Some(parent) = map_path.parent() {
+        if !parent.exists() {
+            info!("Creating directory: {:?}", parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                error!("Failed to create directory {:?}: {}", parent, e);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("Cannot create directory: {}", e),
+                ));
+            }
+        }
+    }
+
+    // Load existing address map or create empty one
+    let address_map: HashMap<String, [u8; 20]> = if map_path.exists() {
+        info!("Loading existing address map from: {:?}", map_path);
+        match std::fs::read(&map_path) {
+            Ok(bytes) => match bincode::deserialize::<HashMap<String, [u8; 20]>>(&bytes) {
+                Ok(map) => {
+                    info!("Loaded {} address mappings", map.len());
+                    map
+                }
+                Err(e) => {
+                    warn!("Failed to deserialize address map, starting with empty map: {}", e);
+                    HashMap::new()
+                }
+            },
+            Err(e) => {
+                warn!("Failed to read address map file, starting with empty map: {}", e);
+                HashMap::new()
+            }
+        }
+    } else {
+        info!("Address map file doesn't exist, creating new one at: {:?}", map_path);
+        let empty_map: HashMap<String, [u8; 20]> = HashMap::new();
+        
+        // Create the empty file
+        match bincode::serialize(&empty_map) {
+            Ok(serialized) => {
+                if let Err(e) = std::fs::write(&map_path, serialized) {
+                    error!("Failed to create initial address map file: {}", e);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("Cannot create address map file: {}", e),
+                    ));
+                }
+                info!("Created empty address map file");
+            }
+            Err(e) => {
+                error!("Failed to serialize empty address map: {}", e);
+                return Err(std::io::Error::other(e.to_string()));
+            }
+        }
+        
+        empty_map
     };
 
     let app_state = web::Data::new(AppState {
