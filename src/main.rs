@@ -556,7 +556,6 @@ mod tests {
     use bitcoin::Network;
     use std::collections::HashMap;
     use std::fs;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_enclave() -> SecureEnclave {
