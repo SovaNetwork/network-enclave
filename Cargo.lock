@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "network-enclave"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "actix-web",
  "bincode",
