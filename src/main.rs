@@ -37,13 +37,13 @@ struct Args {
     #[arg(long, value_parser = parse_network, default_value = "regtest")]
     network: Network,
 
-    /// Logging level (error, warn, info, debug, trace)
-    #[arg(long, default_value = "info")]
-    log_level: String,
-
     /// Path to persist the address map
     #[arg(long, default_value = "./data/address_map.bin")]
     address_map_path: String,
+
+    /// Logging level (error, warn, info, debug, trace)
+    #[arg(long, default_value = "info")]
+    log_level: String,
 }
 
 fn parse_network(s: &str) -> Result<Network, &'static str> {
@@ -548,4 +548,84 @@ async fn main() -> std::io::Result<()> {
     .bind(&bind_addr)?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::Network;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn create_test_enclave() -> SecureEnclave {
+        // Use a fixed seed for deterministic testing
+        let seed = [0u8; 32];
+        SecureEnclave::new(&seed, Network::Regtest).unwrap()
+    }
+
+    #[test]
+    fn test_address_map_persistence() {
+        // Create a temporary directory for testing
+        let temp_dir = TempDir::new().unwrap();
+        let map_path = temp_dir.path().join("test_address_map.bin");
+
+        // Test data
+        let test_evm_addresses = vec![
+            "0x1234567890123456789012345678901234567890",
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "0x9876543210987654321098765432109876543210",
+        ];
+
+        // Phase 1: Create initial address map and persist it
+        {
+            let enclave = create_test_enclave();
+            let mut address_map = HashMap::new();
+
+            // Derive addresses and build the map
+            for evm_addr_str in &test_evm_addresses {
+                let evm_addr_bytes = eth_addr_to_bytes_slice(evm_addr_str).unwrap();
+                let btc_address = enclave.derive_bitcoin_address(&evm_addr_bytes).unwrap();
+                address_map.insert(btc_address.to_string(), evm_addr_bytes);
+            }
+
+            // Simulate the persistence logic from the actual code
+            let serialized = bincode::serialize(&address_map).unwrap();
+            fs::write(&map_path, serialized).unwrap();
+
+            // Verify the file was created
+            assert!(map_path.exists());
+
+            // Verify the map has the expected size
+            assert_eq!(address_map.len(), test_evm_addresses.len());
+        }
+
+        // Phase 2: Load the persisted address map and verify it matches
+        {
+            let enclave = create_test_enclave();
+
+            // Load the address map from disk (simulating service restart)
+            let loaded_map: HashMap<String, [u8; 20]> = {
+                let bytes = fs::read(&map_path).unwrap();
+                bincode::deserialize(&bytes).unwrap()
+            };
+
+            // Verify the loaded map has the correct size
+            assert_eq!(loaded_map.len(), test_evm_addresses.len());
+
+            // Verify each address mapping is correct
+            for evm_addr_str in &test_evm_addresses {
+                let evm_addr_bytes = eth_addr_to_bytes_slice(evm_addr_str).unwrap();
+                let expected_btc_address = enclave.derive_bitcoin_address(&evm_addr_bytes).unwrap();
+
+                // Check that the Bitcoin address exists in the loaded map
+                assert!(loaded_map.contains_key(&expected_btc_address.to_string()));
+
+                // Check that the EVM address bytes match
+                let stored_evm_bytes = loaded_map.get(&expected_btc_address.to_string()).unwrap();
+                assert_eq!(*stored_evm_bytes, evm_addr_bytes);
+            }
+        }
+    }
 }

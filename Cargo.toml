@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.9.0"
+bincode = "1"
 bitcoin = "0.31.1"
 chrono = "0.4"
 clap = { version = "4.4.18", features = ["derive"] }
@@ -14,4 +15,4 @@ serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-bincode = "1"
+tempfile = "3.20.0"
