@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 
 use clap::Parser;
 use hex::FromHex;
+use bincode;
 use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error, info, warn};
@@ -39,6 +41,10 @@ struct Args {
     /// Logging level (error, warn, info, debug, trace)
     #[arg(long, default_value = "info")]
     log_level: String,
+
+    /// Path to persist the address map
+    #[arg(long, default_value = "./data/address_map.bin")]
+    address_map_path: String,
 }
 
 fn parse_network(s: &str) -> Result<Network, &'static str> {
@@ -275,7 +281,8 @@ struct EthereumXpubResponse {
 struct AppState {
     enclave: Arc<SecureEnclave>,
     api_key: String,
-    address_map: Mutex<HashMap<String, [u8; 20]>>,
+    address_map: RwLock<HashMap<String, [u8; 20]>>,
+    address_map_path: PathBuf,
 }
 
 // API validation
@@ -321,8 +328,11 @@ async fn derive_address(
             debug!("Derived Bitcoin address: {:?}", address);
             let address_str = address.to_string();
             {
-                let mut map = state.address_map.lock().unwrap();
+                let mut map = state.address_map.write().unwrap();
                 map.insert(address_str.clone(), evm_addr_bytes);
+                if let Ok(serialized) = bincode::serialize(&*map) {
+                    let _ = std::fs::write(&state.address_map_path, serialized);
+                }
             }
             HttpResponse::Ok().json(DeriveAddressResponse {
                 address: address_str,
@@ -355,7 +365,7 @@ async fn sign_transaction(
         .iter()
         .map(|input| {
             let evm = {
-                let map = state.address_map.lock().unwrap();
+                let map = state.address_map.read().unwrap();
                 map.get(&input.address)
                     .cloned()
                     .ok_or_else(|| format!("Unknown address: {}", input.address))
@@ -437,6 +447,25 @@ async fn get_sova_xpub(req: actix_web::HttpRequest, state: web::Data<AppState>) 
     }
 }
 
+async fn get_address_map(req: actix_web::HttpRequest, state: web::Data<AppState>) -> impl Responder {
+    if !check_api_key(&req, &state.api_key) {
+        warn!(
+            "Unauthorized get_address_map attempt from {:?}",
+            req.peer_addr()
+        );
+        return HttpResponse::Forbidden().json(serde_json::json!({"error": "Unauthorized"}));
+    }
+
+    let map = state.address_map.read().unwrap();
+    match serde_json::to_string(&*map) {
+        Ok(body) => HttpResponse::Ok().body(body),
+        Err(e) => {
+            error!("Failed to serialize address map: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy"
@@ -489,10 +518,17 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
+    let map_path = PathBuf::from(&args.address_map_path);
+    let address_map: HashMap<String, [u8; 20]> = match std::fs::read(&map_path) {
+        Ok(bytes) => bincode::deserialize(&bytes).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    };
+
     let app_state = web::Data::new(AppState {
         enclave: enclave.clone(),
         api_key: api_key.clone(),
-        address_map: Mutex::new(HashMap::new()),
+        address_map: RwLock::new(address_map),
+        address_map_path: map_path,
     });
 
     let bind_addr = format!("{}:{}", args.host, args.port);
@@ -505,6 +541,7 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health_check)) // unprotected
             .route("/sign_transaction", web::post().to(sign_transaction)) // protected
             .route("/sova_xpub", web::get().to(get_sova_xpub)) // protected
+            .route("/address_map", web::get().to(get_address_map)) // protected
     })
     .bind(&bind_addr)?
     .run()
